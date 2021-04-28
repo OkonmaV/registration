@@ -26,19 +26,18 @@ func connCloser(db database) error {
 func main() {
 	ctx, cancel := httpservice.CreateContextWithInterruptSignal()
 	logger.SetupLogger(ctx, time.Second*2, []logger.LogWriter{logger.NewConsoleLogWriter(logger.DebugLevel)})
+	defer func() {
+		cancel()
+		<-logger.AllLogsFlushed
+	}()
 
 	handler, err := NewCodesGeneratorHandler()
 	if err != nil {
 		logger.Error(thisServiceName, err)
 		return
 	}
-	logger.Error(thisServiceName, httpservice.ServeHTTPService(ctx, "tcp", ":8090", false, 10, handler))
-
 	defer logger.Error(thisServiceName, connCloser(*handler))
-	defer func() {
-		cancel()
-		<-logger.AllLogsFlushed
-	}()
+	logger.Error(thisServiceName, httpservice.ServeHTTPService(ctx, "tcp", ":8090", false, 10, handler))
 }
 
 func NewCodesGeneratorHandler() (*database, error) {
@@ -50,7 +49,9 @@ func NewCodesGeneratorHandler() (*database, error) {
 		MaxReconnects: 4,
 	})
 	if err != nil {
+		//fmt.Println(err)
 		return nil, err
+
 	}
 	return &database{trntlConn: trntlConnection, trntlTable: "regcodes"}, nil
 }
