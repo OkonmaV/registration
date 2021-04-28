@@ -1,95 +1,58 @@
 package main
 
 import (
-	"net/url"
+	"context"
+	"flag"
+	"lib"
+	"os"
 	"strings"
 	"time"
 
-	"github.com/big-larry/suckhttp"
-	"github.com/tarantool/go-tarantool"
 	"github.com/thin-peak/httpservice"
 	"github.com/thin-peak/logger"
 )
 
-const thisServiceName = "RegFormGenerator service"
-
-type database struct {
-	trntlConn  *tarantool.Connection
+type flags struct {
+	trntlAddr  string
 	trntlTable string
 }
 
-func connCloser(db database) error {
-	return db.trntlConn.Close()
-}
-
-const form = `<form action="http://localhost:8092" method="POST">
-	<input type="hidden" name="code" value="%regcode%">
-	<input placeholder="name" name="name">
-	<input placeholder="surname" name="surname">
-	<input placeholder="otch" name="otch">
-	<input placeholder="password1" type="password" name="password1">
-	<input placeholder="password2" type="password" name="password2">
-	<input type="submit" value="registry">
-</form>
-`
-
 func main() {
-	ctx, cancel := httpservice.CreateContextWithInterruptSignal()
-	logger.SetupLogger(ctx, time.Second*2, []logger.LogWriter{logger.NewConsoleLogWriter(logger.DebugLevel)})
 
-	handler, err := NewCodesGeneratorHandler()
-	if err != nil {
-		logger.Error(thisServiceName, err)
-		return
+	servAddr := flag.String("listen", "127.0.0.1:8082", "Service listen address (unix/udp/tcp)")
+	flgs := &flags{}
+	flag.StringVar(&flgs.trntlAddr, "trntl-address", "127.0.0.1:3301", "Tarantool listener address (unix/tcp)")
+	flag.StringVar(&flgs.trntlTable, "trntl-table", "regcodes", "Tarantool table name (string)")
+	flag.Parse()
+
+	if *servAddr == "" {
+		println("listen address not set")
+		os.Exit(1)
 	}
-	logger.Error(thisServiceName, httpservice.ServeHTTPService(ctx, "tcp", ":8091", false, 10, handler))
-
-	defer logger.Error(thisServiceName, connCloser(*handler))
+	ctx, cancel := httpservice.CreateContextWithInterruptSignal()
+	loggerctx, loggercancel := context.WithCancel(context.Background())
 	defer func() {
 		cancel()
+		loggercancel()
 		<-logger.AllLogsFlushed
 	}()
-}
+	logger.SetupLogger(loggerctx, time.Second*2, []logger.LogWriter{logger.NewConsoleLogWriter(logger.DebugLevel)})
 
-func NewCodesGeneratorHandler() (*database, error) {
-	trntlConnection, err := tarantool.Connect("127.0.0.1:3301", tarantool.Opts{
-		// User: ,
-		// Pass: ,
-		Timeout:       500 * time.Millisecond,
-		Reconnect:     1 * time.Second,
-		MaxReconnects: 4,
-	})
+	conf, err := httpservice.NewConfigurator(ctx, lib.ServiceNameFormGenerator, *servAddr, httpservice.ServiceName(lib.ServiceNameFormGenerator))
+
 	if err != nil {
-		return nil, err
+		logger.Error("Configurator connect", err)
+		return
 	}
-	return &database{trntlConn: trntlConnection, trntlTable: "regcodes"}, nil
-}
 
-func (db *database) Handle(r *suckhttp.Request) (w *suckhttp.Response, err error) {
-
-	w = &suckhttp.Response{}
-
-	queryValues, err := url.ParseQuery(r.Uri.RawQuery)
+	handler, err := flgs.NewHandler(conf)
 	if err != nil {
-		return nil, err
+		logger.Error("Init", err)
+		return
 	}
 
-	regCode := queryValues.Get("code")
-	if regCode == "" {
-		w.SetStatusCode(400, "Bad Request")
-		return w, nil
+	defer handler.Close()
+	if err := httpservice.ServeHTTPService(ctx, (*servAddr)[:strings.Index(*servAddr, ":")], (*servAddr)[strings.Index(*servAddr, ":")+1:], false, 10, handler); err != nil {
+		logger.Error("Start service", err)
 	}
-	var trntlRes []interface{}
-	err = db.trntlConn.SelectTyped(db.trntlTable, "primary", 0, 1, tarantool.IterEq, []interface{}{regCode}, &trntlRes)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(trntlRes) == 0 {
-		w.SetStatusCode(400, "Bad Request")
-		return w, nil
-	}
-
-	w.SetBody([]byte(strings.ReplaceAll(form, "%regcode%", regCode)))
-	return
 }

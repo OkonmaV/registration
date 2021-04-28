@@ -12,21 +12,9 @@ import (
 	"github.com/thin-peak/logger"
 )
 
-type flags struct {
-	trntlAddr   string
-	trntlTable  string
-	mgoAddr     string
-	mgoCollName string
-}
-
 func main() {
 
-	servAddr := flag.String("listen", "127.0.0.1:8083", "Service listen address (unix/udp/tcp)")
-	flgs := &flags{}
-	flag.StringVar(&flgs.trntlAddr, "trntl-address", "127.0.0.1:3301", "Tarantool listener address (unix/tcp)")
-	flag.StringVar(&flgs.trntlTable, "trntl-table", "regcodes", "Tarantool table name (string)")
-	flag.StringVar(&flgs.mgoAddr, "mgo-address", "127.0.0.1", "Mongo listener address (url)")
-	flag.StringVar(&flgs.mgoCollName, "mgo-coll", "users", "Mongo table name (string)")
+	servAddr := flag.String("listen", "127.0.0.1:8084", "Service listen address (unix/udp/tcp)")
 	flag.Parse()
 
 	if *servAddr == "" {
@@ -43,18 +31,17 @@ func main() {
 	}()
 	logger.SetupLogger(loggerctx, time.Second*2, []logger.LogWriter{logger.NewConsoleLogWriter(logger.DebugLevel)})
 
-	conf, err := httpservice.NewConfigurator(ctx, lib.ServiceNameRegisterWithForm, *servAddr, httpservice.ServiceName(lib.ServiceNameRegisterWithForm))
+	conf, err := httpservice.NewConfigurator(ctx, lib.ServiceNameCookieGen, *servAddr, httpservice.ServiceName(lib.ServiceNameCookieGen))
 	if err != nil {
 		logger.Error("Configurator connect", err)
 		return
 	}
 
-	handler, err := flgs.NewHandler(conf)
+	handler, err := NewHandler(conf)
 	if err != nil {
 		logger.Error("Init", err)
 		return
 	}
-	defer handler.Close()
 	if err := httpservice.ServeHTTPService(ctx, (*servAddr)[:strings.Index(*servAddr, ":")], (*servAddr)[strings.Index(*servAddr, ":")+1:], false, 10, handler); err != nil {
 		logger.Error("Start service", err)
 	}

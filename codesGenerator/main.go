@@ -19,10 +19,10 @@ type flags struct {
 
 func main() {
 
-	servAddr := flag.String("listen", "", "Service listen address (unix/udp/tcp)")
+	servAddr := flag.String("listen", "127.0.0.1:8081", "Service listen address (unix/udp/tcp)")
 	flgs := &flags{}
-	flag.StringVar(&flgs.trntlAddr, "trntl", "127.0.0.1:3301", "Tarantool listener address (unix/tcp)")
-	flag.StringVar(&flgs.trntlTable, "trntl", "regcodes", "Tarantool table name (string)")
+	flag.StringVar(&flgs.trntlAddr, "trntl-address", "127.0.0.1:3301", "Tarantool listener address (unix/tcp)")
+	flag.StringVar(&flgs.trntlTable, "trntl-table", "regcodes", "Tarantool table name (string)")
 	flag.Parse()
 
 	if *servAddr == "" {
@@ -51,7 +51,7 @@ func main() {
 		return
 	}
 	defer handler.Close()
-	if err := httpservice.ServeHTTPService(ctx, (*servAddr)[:strings.Index(*servAddr, ":")], (*servAddr)[strings.Index(*servAddr, ":")+1:], true, 10, handler); err != nil {
+	if err := httpservice.ServeHTTPService(ctx, (*servAddr)[:strings.Index(*servAddr, ":")], (*servAddr)[strings.Index(*servAddr, ":")+1:], false, 10, handler); err != nil {
 		logger.Error("Start service", err)
 	}
 }
