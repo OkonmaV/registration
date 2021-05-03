@@ -2,38 +2,25 @@ package main
 
 import (
 	"errors"
-	"lib"
 	"math/rand"
 	"net/url"
 	"strconv"
+	"thin-peak/logs/logger"
 	"time"
 
 	"github.com/big-larry/suckhttp"
 	"github.com/big-larry/suckutils"
 	"github.com/tarantool/go-tarantool"
-	"github.com/thin-peak/httpservice"
-	"github.com/thin-peak/logger"
 )
 
-type CodesGeneratorHandler struct {
-	trntlConn    *tarantool.Connection
-	trntlTable   string
-	configurator *httpservice.Configurator
-	logWriters   []logger.LogWriter
+type CodesGenerator struct {
+	trntlConn  *tarantool.Connection
+	trntlTable string
 }
 
-func (handler *CodesGeneratorHandler) Close() error {
-	return handler.trntlConn.Close()
-}
+func NewCodesGenerator(trntlAddr string, trntlTable string, trntlConn *tarantool.Connection) (*CodesGenerator, error) {
 
-func (flags *flags) NewHandler(configurator *httpservice.Configurator) (*CodesGeneratorHandler, error) {
-
-	logWriters, err := lib.LogsInit(configurator)
-	if err != nil {
-		return nil, err
-	}
-
-	trntlConnection, err := tarantool.Connect(flags.trntlAddr, tarantool.Opts{
+	trntlConnection, err := tarantool.Connect(trntlAddr, tarantool.Opts{
 		// User: ,
 		// Pass: ,
 		Timeout:       500 * time.Millisecond,
@@ -44,10 +31,10 @@ func (flags *flags) NewHandler(configurator *httpservice.Configurator) (*CodesGe
 		return nil, err
 	}
 
-	return &CodesGeneratorHandler{trntlConn: trntlConnection, trntlTable: flags.trntlTable, configurator: configurator, logWriters: logWriters}, nil
+	return &CodesGenerator{trntlConn: trntlConnection, trntlTable: trntlTable}, nil
 }
 
-func (handler *CodesGeneratorHandler) Handle(r *suckhttp.Request) (w *suckhttp.Response, err error) {
+func (conf *CodesGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (w *suckhttp.Response, err error) {
 
 	// TODO: AUTH
 
@@ -76,15 +63,15 @@ func (handler *CodesGeneratorHandler) Handle(r *suckhttp.Request) (w *suckhttp.R
 	// закатываем
 	var errStep int
 	var expires time.Time = time.Now().Add(time.Hour * 72)
-	var errDuplicateCodes = &tarantool.Error{Msg: suckutils.ConcatThree("Duplicate key exists in unique index 'primary' in space '", handler.trntlTable, "'"), Code: tarantool.ErrTupleFound}
+	var errDuplicateCodes = &tarantool.Error{Msg: suckutils.ConcatThree("Duplicate key exists in unique index 'primary' in space '", conf.trntlTable, "'"), Code: tarantool.ErrTupleFound}
 
 	for i, c := range codes {
-		_, err = handler.trntlConn.Insert(handler.trntlTable, []interface{}{c, expires})
+		_, err = conf.trntlConn.Insert(conf.trntlTable, []interface{}{c, expires})
 		if err != nil {
 			if errors.Is(err, *errDuplicateCodes) {
 
 				cc := rand.New(rand.NewSource(time.Now().UnixNano())).Int31n(90000) + 10000
-				_, err = handler.trntlConn.Insert(handler.trntlTable, []interface{}{cc, expires})
+				_, err = conf.trntlConn.Insert(conf.trntlTable, []interface{}{cc, expires})
 
 				if err != nil {
 					errStep = i
@@ -92,6 +79,7 @@ func (handler *CodesGeneratorHandler) Handle(r *suckhttp.Request) (w *suckhttp.R
 				}
 
 			} else {
+				logger.Warning("tarantool.Insert", err.Error())
 				errStep = i
 				break
 			}
@@ -103,7 +91,7 @@ func (handler *CodesGeneratorHandler) Handle(r *suckhttp.Request) (w *suckhttp.R
 		w = nil
 		if errStep > 0 {
 			for i := 0; i < errStep; i++ {
-				_, errr := handler.trntlConn.Delete(handler.trntlTable, "primary", []interface{}{codes[i]})
+				_, errr := conf.trntlConn.Delete(conf.trntlTable, "primary", []interface{}{codes[i]})
 				if errr != nil {
 					return nil, errr
 				}

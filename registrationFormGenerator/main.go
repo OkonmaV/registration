@@ -24,7 +24,8 @@ func (c *config) GetConfiguratorAddress() string {
 	return c.Configurator
 }
 func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.ServiceName]*httpservice.InnerService) (httpservice.HttpService, error) {
-	return NewCodesGenerator(c.TrntlAddr, c.TrntlTable, c.TrntlConn)
+	c.TrntlConn = new(tarantool.Connection)
+	return NewRegistrationFormGenerator(c.TrntlAddr, c.TrntlTable, c.TrntlConn)
 }
 
 func (c *config) Close() error {
@@ -35,14 +36,9 @@ func main() {
 	httpservice.InitNewService(lib.ServiceNameCodesGenerator, false, 5, &config{})
 }
 
-// type flags struct {
-// 	trntlAddr  string
-// 	trntlTable string
-// }
-
 // func main() {
 
-// 	servAddr := flag.String("listen", "127.0.0.1:8081", "Service listen address (unix/udp/tcp)")
+// 	servAddr := flag.String("listen", "127.0.0.1:8082", "Service listen address (unix/udp/tcp)")
 // 	flgs := &flags{}
 // 	flag.StringVar(&flgs.trntlAddr, "trntl-address", "127.0.0.1:3301", "Tarantool listener address (unix/tcp)")
 // 	flag.StringVar(&flgs.trntlTable, "trntl-table", "regcodes", "Tarantool table name (string)")
@@ -52,7 +48,6 @@ func main() {
 // 		println("listen address not set")
 // 		os.Exit(1)
 // 	}
-
 // 	ctx, cancel := httpservice.CreateContextWithInterruptSignal()
 // 	loggerctx, loggercancel := context.WithCancel(context.Background())
 // 	defer func() {
@@ -62,7 +57,8 @@ func main() {
 // 	}()
 // 	logger.SetupLogger(loggerctx, time.Second*2, []logger.LogWriter{logger.NewConsoleLogWriter(logger.DebugLevel)})
 
-// 	conf, err := httpservice.NewConfigurator(ctx, lib.ServiceNameCodesGenerator, *servAddr, httpservice.ServiceName(lib.ServiceNameCodesGenerator))
+// 	conf, err := httpservice.NewConfigurator(ctx, lib.ServiceNameFormGenerator, *servAddr, httpservice.ServiceName(lib.ServiceNameFormGenerator))
+
 // 	if err != nil {
 // 		logger.Error("Configurator connect", err)
 // 		return
@@ -73,6 +69,7 @@ func main() {
 // 		logger.Error("Init", err)
 // 		return
 // 	}
+
 // 	defer handler.Close()
 // 	if err := httpservice.ServeHTTPService(ctx, (*servAddr)[:strings.Index(*servAddr, ":")], (*servAddr)[strings.Index(*servAddr, ":")+1:], false, 10, handler); err != nil {
 // 		logger.Error("Start service", err)

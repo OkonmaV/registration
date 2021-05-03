@@ -1,39 +1,30 @@
 package main
 
 import (
-	"lib"
 	"net/url"
+	"thin-peak/logs/logger"
 	"time"
 
 	"github.com/big-larry/suckhttp"
 	"github.com/big-larry/suckutils"
 	"github.com/dgrijalva/jwt-go"
-	"github.com/thin-peak/httpservice"
-	"github.com/thin-peak/logger"
 )
 
-type Claims struct {
+type claims struct {
 	Login string
 	Salt  string
 	jwt.StandardClaims
 }
 
-type CookieGeneratorHandler struct {
-	configurator *httpservice.Configurator
-	logWriters   []logger.LogWriter
+type CookieGenerator struct {
 }
 
-func NewHandler(configurator *httpservice.Configurator) (*CookieGeneratorHandler, error) {
+func NewCookieGenerator() (*CookieGenerator, error) {
 
-	logWriters, err := lib.LogsInit(configurator)
-	if err != nil {
-		return nil, err
-	}
-
-	return &CookieGeneratorHandler{configurator: configurator, logWriters: logWriters}, nil
+	return &CookieGenerator{}, nil
 }
 
-func (handler *CookieGeneratorHandler) Handle(r *suckhttp.Request) (w *suckhttp.Response, err error) {
+func (conf *CookieGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (w *suckhttp.Response, err error) {
 
 	jwtKey := []byte{79, 76, 69, 71}
 
@@ -41,18 +32,17 @@ func (handler *CookieGeneratorHandler) Handle(r *suckhttp.Request) (w *suckhttp.
 	if err != nil {
 		return nil, err
 	}
-
-	userLoginHash := formValues.Get("l")
+	userLoginHash := formValues.Get("login")
 	if len(userLoginHash) != 32 {
 		w.SetStatusCode(400, "Bad Request")
 	}
 
-	jwtToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, &Claims{Login: userLoginHash, Salt: string([]byte{79, 76, 69, 71})}).SignedString(jwtKey)
+	jwtToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, &claims{Login: userLoginHash, Salt: string([]byte{79, 76, 69, 71})}).SignedString(jwtKey)
 	if err != nil {
 		return nil, err
 	}
 
-	expires := time.Now().Add(10 * time.Hour).String()
+	expires := time.Now().Add(20 * time.Hour).String()
 
 	w.SetHeader("Set-Cookie", suckutils.ConcatFour("koki=", jwtToken, ";Expires=", expires))
 	w.SetStatusCode(200, "OK")

@@ -1,30 +1,27 @@
 package main
 
 import (
-	"lib"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/big-larry/suckhttp"
-	"github.com/thin-peak/httpservice"
+
+	"thin-peak/logs/logger"
 
 	"github.com/tarantool/go-tarantool"
-	"github.com/thin-peak/logger"
 )
 
-type FormGeneratorHandler struct {
-	trntlConn    *tarantool.Connection
-	trntlTable   string
-	configurator *httpservice.Configurator
-	logWriters   []logger.LogWriter
+type RegistrationFormGenerator struct {
+	trntlConn  *tarantool.Connection
+	trntlTable string
 }
 
-func (handler *FormGeneratorHandler) Close() error {
+func (handler *RegistrationFormGenerator) Close() error {
 	return handler.trntlConn.Close()
 }
 
-const form = `<form action="http://localhost:8092" method="POST">
+const form = `<form action="http://127.0.0.1:8094" method="POST"> 
 	<input type="hidden" name="code" value="%regcode%">
 	<input placeholder="name" name="name">
 	<input placeholder="surname" name="surname">
@@ -33,16 +30,11 @@ const form = `<form action="http://localhost:8092" method="POST">
 	<input placeholder="password2" type="password" name="password2">
 	<input type="submit" value="registry">
 </form>
-`
+` // TODO: адрес прописать
 
-func (flags *flags) NewHandler(configurator *httpservice.Configurator) (*FormGeneratorHandler, error) {
+func NewRegistrationFormGenerator(trntlAddr string, trntlTable string, trntlConn *tarantool.Connection) (*RegistrationFormGenerator, error) {
 
-	logWriters, err := lib.LogsInit(configurator)
-	if err != nil {
-		return nil, err
-	}
-
-	trntlConnection, err := tarantool.Connect(flags.trntlAddr, tarantool.Opts{
+	trntlConn, err := tarantool.Connect(trntlAddr, tarantool.Opts{
 		// User: ,
 		// Pass: ,
 		Timeout:       500 * time.Millisecond,
@@ -52,11 +44,10 @@ func (flags *flags) NewHandler(configurator *httpservice.Configurator) (*FormGen
 	if err != nil {
 		return nil, err
 	}
-
-	return &FormGeneratorHandler{trntlConn: trntlConnection, trntlTable: flags.trntlTable, configurator: configurator, logWriters: logWriters}, nil
+	return &RegistrationFormGenerator{trntlConn: trntlConn, trntlTable: trntlTable}, nil
 }
 
-func (handler *FormGeneratorHandler) Handle(r *suckhttp.Request) (w *suckhttp.Response, err error) {
+func (conf *RegistrationFormGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (w *suckhttp.Response, err error) {
 
 	w = &suckhttp.Response{}
 
@@ -71,7 +62,7 @@ func (handler *FormGeneratorHandler) Handle(r *suckhttp.Request) (w *suckhttp.Re
 		return w, nil
 	}
 	var trntlRes []interface{}
-	err = handler.trntlConn.SelectTyped(handler.trntlTable, "primary", 0, 1, tarantool.IterEq, []interface{}{regCode}, &trntlRes)
+	err = conf.trntlConn.SelectTyped(conf.trntlTable, "primary", 0, 1, tarantool.IterEq, []interface{}{regCode}, &trntlRes)
 	if err != nil {
 		return nil, err
 	}

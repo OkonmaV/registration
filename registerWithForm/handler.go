@@ -5,15 +5,13 @@ import (
 	"lib"
 	"net/url"
 	"strconv"
+	"thin-peak/logs/logger"
 	"time"
-
-	"github.com/thin-peak/httpservice"
 
 	"github.com/big-larry/mgo"
 	"github.com/big-larry/suckhttp"
 	"github.com/big-larry/suckutils"
 	"github.com/tarantool/go-tarantool"
-	"github.com/thin-peak/logger"
 )
 
 type User struct {
@@ -27,29 +25,17 @@ type User struct {
 	Fac      string `bson:"fac"`
 }
 
-type RegisterWithFormHandler struct {
+type RegisterWithForm struct {
 	mgoSession      *mgo.Session
 	mgoColl         *mgo.Collection
 	trntlConn       *tarantool.Connection
 	trntlTable      string
 	trntlTableCodes string
-	configurator    *httpservice.Configurator
-	logWriters      []logger.LogWriter
 }
 
-func (handler *RegisterWithFormHandler) Close() error {
-	handler.mgoSession.Close()
-	return handler.trntlConn.Close()
-}
+func NewRegisterWithForm(trntlAddr string, trntlTable string, trntlConn *tarantool.Connection, mgoAddr string, mgoColl string, mgoConn *mgo.Session) (*RegisterWithForm, error) {
 
-func (flags *flags) NewHandler(configurator *httpservice.Configurator) (*RegisterWithFormHandler, error) {
-
-	logWriters, err := lib.LogsInit(configurator)
-	if err != nil {
-		return nil, err
-	}
-
-	trntlConnection, err := tarantool.Connect(flags.trntlAddr, tarantool.Opts{
+	trntlConnection, err := tarantool.Connect(trntlAddr, tarantool.Opts{
 		// User: ,
 		// Pass: ,
 		Timeout:       500 * time.Millisecond,
@@ -60,15 +46,15 @@ func (flags *flags) NewHandler(configurator *httpservice.Configurator) (*Registe
 		return nil, err
 	}
 
-	mgoSession, err := mgo.Dial("127.0.0.1")
+	mgoSession, err := mgo.Dial(mgoAddr)
 	if err != nil {
 		return nil, err
 	}
 
-	return &RegisterWithFormHandler{mgoSession: mgoSession, mgoColl: mgoSession.DB("main").C(flags.mgoCollName), trntlConn: trntlConnection, trntlTable: flags.trntlTable, configurator: configurator, logWriters: logWriters}, nil
+	return &RegisterWithForm{mgoSession: mgoSession, mgoColl: mgoSession.DB("main").C(mgoColl), trntlConn: trntlConnection, trntlTable: trntlTable}, nil
 }
 
-func (handler *RegisterWithFormHandler) Handle(r *suckhttp.Request) (w *suckhttp.Response, err error) {
+func (conf *RegisterWithForm) Handle(r *suckhttp.Request, l *logger.Logger) (w *suckhttp.Response, err error) {
 
 	formValues, err := url.ParseQuery(string(r.Body))
 	if err != nil {
@@ -88,7 +74,7 @@ func (handler *RegisterWithFormHandler) Handle(r *suckhttp.Request) (w *suckhttp
 	userRegCodeInt := int32(foo)
 
 	var trntlRes []interface{}
-	err = handler.trntlConn.SelectTyped(handler.trntlTableCodes, "primary", 0, 1, tarantool.IterEq, []interface{}{userRegCodeInt}, &trntlRes)
+	err = conf.trntlConn.SelectTyped(conf.trntlTableCodes, "primary", 0, 1, tarantool.IterEq, []interface{}{userRegCodeInt}, &trntlRes)
 	if err != nil {
 		return nil, err
 	}
@@ -135,18 +121,18 @@ func (handler *RegisterWithFormHandler) Handle(r *suckhttp.Request) (w *suckhttp
 		return nil, err
 	}
 
-	_, err = handler.trntlConn.Insert(handler.trntlTable, []interface{}{userMailHash, userPassHash})
+	_, err = conf.trntlConn.Insert(conf.trntlTable, []interface{}{userMailHash, userPassHash})
 	if err != nil {
-		if errors.Is(err, tarantool.Error{Msg: suckutils.ConcatThree("Duplicate key exists in unique index 'primary' in space '", handler.trntlTable, "'"), Code: tarantool.ErrTupleFound}) {
+		if errors.Is(err, tarantool.Error{Msg: suckutils.ConcatThree("Duplicate key exists in unique index 'primary' in space '", conf.trntlTable, "'"), Code: tarantool.ErrTupleFound}) {
 			w.SetStatusCode(418, "") // TODO
 			return
 		}
 		return nil, err
 	}
 	insertData := &User{Id: userMailHash, Mail: userMail, Surname: userF, Name: userI, Otch: userO, Position: userPosition, Kaf: userKaf, Fac: userFac}
-	err = handler.mgoColl.Insert(insertData)
+	err = conf.mgoColl.Insert(insertData)
 	if err != nil {
-		_, errr := handler.trntlConn.Delete(handler.trntlTable, "primary", []interface{}{userMailHash})
+		_, errr := conf.trntlConn.Delete(conf.trntlTable, "primary", []interface{}{userMailHash})
 		if errr != nil {
 			return nil, errr
 		}
