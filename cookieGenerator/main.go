@@ -1,8 +1,8 @@
 package main
 
 import (
+	"../lib"
 	"context"
-	"lib"
 
 	"thin-peak/httpservice"
 )

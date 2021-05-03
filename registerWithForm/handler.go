@@ -2,8 +2,8 @@ package main
 
 import (
 	"errors"
-	"lib"
 	"net/url"
+	"registration/lib"
 	"strconv"
 	"thin-peak/logs/logger"
 	"time"
@@ -139,6 +139,7 @@ func (conf *RegisterWithForm) Handle(r *suckhttp.Request, l *logger.Logger) (w *
 		return nil, err
 	}
 
+	// TODO: дать куку
 	// TODO: письмо на мыло
 
 	w.SetStatusCode(200, "OK")
