@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"math/rand"
 	"net/url"
 	"strconv"
@@ -18,8 +19,8 @@ type CodesGenerator struct {
 	trntlTable string
 }
 
-func NewCodesGenerator(trntlAddr string, trntlTable string, trntlConn *tarantool.Connection) (*CodesGenerator, error) {
-
+func NewCodesGenerator(trntlAddr string, trntlTable string) (*CodesGenerator, error) {
+	fmt.Println("conn")
 	trntlConnection, err := tarantool.Connect(trntlAddr, tarantool.Opts{
 		// User: ,
 		// Pass: ,
@@ -30,14 +31,19 @@ func NewCodesGenerator(trntlAddr string, trntlTable string, trntlConn *tarantool
 	if err != nil {
 		return nil, err
 	}
-
+	fmt.Println("connected")
 	return &CodesGenerator{trntlConn: trntlConnection, trntlTable: trntlTable}, nil
+}
+
+func (handler *CodesGenerator) Close() error {
+	fmt.Println("------------ATTENTION---------------")
+	return handler.trntlConn.Close()
 }
 
 func (conf *CodesGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (w *suckhttp.Response, err error) {
 
 	// TODO: AUTH
-
+	fmt.Println("STAAAAAAAAAART")
 	w = &suckhttp.Response{}
 	err = nil
 	queryValues, err := url.ParseQuery(r.Uri.RawQuery)
@@ -87,7 +93,6 @@ func (conf *CodesGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (w *su
 	}
 
 	// откатываем
-	// Вот тут не понял... Что откатываем?
 	if err != nil {
 		w = nil
 		if errStep > 0 {

@@ -2,8 +2,8 @@ package main
 
 import (
 	"errors"
+	"lib"
 	"net/url"
-	"registration/lib"
 	"strconv"
 	"thin-peak/logs/logger"
 	"time"
