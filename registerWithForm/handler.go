@@ -140,6 +140,7 @@ func (conf *RegisterWithForm) Handle(r *suckhttp.Request, l *logger.Logger) (w *
 	}
 
 	// TODO: дать куку
+	// Так дай, есть же сервис!!!
 	// TODO: письмо на мыло
 
 	w.SetStatusCode(200, "OK")

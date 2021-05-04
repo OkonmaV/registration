@@ -54,10 +54,10 @@ func (conf *CodesGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (w *su
 		return
 	}
 	// генерим коды
+	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 	codes := make([]int32, countInt)
 	for i := 0; i < countInt; i++ {
-		c := rand.New(rand.NewSource(time.Now().UnixNano())).Int31n(90000) + 10000
-		codes = append(codes, c)
+		codes[i] = rnd.Int31n(90000) + 10000
 	}
 
 	// закатываем
@@ -65,12 +65,13 @@ func (conf *CodesGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (w *su
 	var expires time.Time = time.Now().Add(time.Hour * 72)
 	var errDuplicateCodes = &tarantool.Error{Msg: suckutils.ConcatThree("Duplicate key exists in unique index 'primary' in space '", conf.trntlTable, "'"), Code: tarantool.ErrTupleFound}
 
+	// А у тарантула нету что-то вроде InsertMany ?
 	for i, c := range codes {
 		_, err = conf.trntlConn.Insert(conf.trntlTable, []interface{}{c, expires})
 		if err != nil {
 			if errors.Is(err, *errDuplicateCodes) {
 
-				cc := rand.New(rand.NewSource(time.Now().UnixNano())).Int31n(90000) + 10000
+				cc := rnd.Int31n(90000) + 10000
 				_, err = conf.trntlConn.Insert(conf.trntlTable, []interface{}{cc, expires})
 
 				if err != nil {
@@ -87,6 +88,7 @@ func (conf *CodesGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (w *su
 	}
 
 	// откатываем
+	// Вот тут не понял... Что откатываем?
 	if err != nil {
 		w = nil
 		if errStep > 0 {
@@ -101,6 +103,7 @@ func (conf *CodesGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (w *su
 	}
 
 	// TODO: ВОТ ТУТ ГЕНЕРИМ ДОКУМЕНТ И ОТДАЕМ
+	// Генерируй и отдавай в зависимости от запрошенного в заголовке Accept
 	w.SetStatusCode(200, "OK")
 	return
 }
