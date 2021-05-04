@@ -1,0 +1,6 @@
+Configurator = "unix:/var/run/my/configurator.sock"
+Listen = "tcp:127.0.0.1:8083"
+TrntlAddr = "tcp:127.0.0.1:3301"
+TrntlTable = "users"
+MgoAddr = "127.0.0.1"
+MgoColl = "users"

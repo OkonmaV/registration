@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"net/url"
 	"thin-peak/logs/logger"
 	"time"
@@ -12,7 +13,7 @@ import (
 
 type claims struct {
 	Login string
-	Salt  string
+	//Salt  string
 	jwt.StandardClaims
 }
 
@@ -28,6 +29,13 @@ var jwtKey = []byte{79, 76, 69, 71}
 
 func (conf *CookieGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (w *suckhttp.Response, err error) {
 
+	if r.GetHeader("Content-Type") != "application/x-www-form-urlencoded" && r.GetMethod() != suckhttp.POST {
+		w.SetStatusCode(400, "Bad Request")
+		err = errors.New("Wrong request's method or content-type")
+		//l.Warning("Request's params", "Wrong method or content-type")
+		return
+	}
+
 	// Это если POST-запрос и Content-Type: application/x-www-form-urlencoded
 	// Можно на всякий случай проверочку сделать или еще лучше рассмотреть и реализовать варианты обращений
 	formValues, err := url.ParseQuery(string(r.Body))
@@ -39,8 +47,7 @@ func (conf *CookieGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (w *s
 		w.SetStatusCode(400, "Bad Request")
 	}
 
-	// Salt и SignedString оинаковые, так и должно быть?
-	jwtToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, &claims{Login: userLoginHash, Salt: string([]byte{79, 76, 69, 71})}).SignedString(jwtKey)
+	jwtToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, &claims{Login: userLoginHash}).SignedString(jwtKey)
 	if err != nil {
 		return nil, err
 	}

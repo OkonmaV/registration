@@ -65,7 +65,6 @@ func (conf *CodesGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (w *su
 	var expires time.Time = time.Now().Add(time.Hour * 72)
 	var errDuplicateCodes = &tarantool.Error{Msg: suckutils.ConcatThree("Duplicate key exists in unique index 'primary' in space '", conf.trntlTable, "'"), Code: tarantool.ErrTupleFound}
 
-	// А у тарантула нету что-то вроде InsertMany ?
 	for i, c := range codes {
 		_, err = conf.trntlConn.Insert(conf.trntlTable, []interface{}{c, expires})
 		if err != nil {
