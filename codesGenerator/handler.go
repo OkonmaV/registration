@@ -54,7 +54,7 @@ func (conf *CodesGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (w *su
 		return
 	}
 	// генерим коды
-	var codes []int32
+	codes := make([]int32, countInt)
 	for i := 0; i < countInt; i++ {
 		c := rand.New(rand.NewSource(time.Now().UnixNano())).Int31n(90000) + 10000
 		codes = append(codes, c)
