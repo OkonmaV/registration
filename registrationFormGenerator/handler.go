@@ -49,11 +49,12 @@ func NewRegistrationFormGenerator(trntlAddr string, trntlTable string) (*Registr
 
 func (conf *RegistrationFormGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (w *suckhttp.Response, err error) {
 
-	//w = &suckhttp.Response{}
+	w = &suckhttp.Response{}
 
 	queryValues, err := url.ParseQuery(r.Uri.RawQuery)
 	if err != nil {
-		return nil, err
+		w.SetStatusCode(400, "Bad Request")
+		return
 	}
 
 	regCode := queryValues.Get("code")

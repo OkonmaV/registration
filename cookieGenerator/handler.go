@@ -28,6 +28,8 @@ var jwtKey = []byte{79, 76, 69, 71}
 
 func (conf *CookieGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (w *suckhttp.Response, err error) {
 
+	w = &suckhttp.Response{}
+
 	if r.GetHeader("Content-Type") != "application/x-www-form-urlencoded" && r.GetMethod() != suckhttp.POST {
 		w.SetStatusCode(400, "Bad Request")
 		err = errors.New("wrong request's method or content-type")
@@ -39,7 +41,8 @@ func (conf *CookieGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (w *s
 	// Можно на всякий случай проверочку сделать или еще лучше рассмотреть и реализовать варианты обращений
 	formValues, err := url.ParseQuery(string(r.Body))
 	if err != nil {
-		return nil, err
+		w.SetStatusCode(400, "Bad Request")
+		return
 	}
 	userLoginHash := formValues.Get("loginHash")
 	userLogin := formValues.Get("login")

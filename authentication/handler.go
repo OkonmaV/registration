@@ -39,9 +39,12 @@ func NewAuthentication(trntlAddr string, trntlTable string, conns map[httpservic
 
 func (conf *Authentication) Handle(r *suckhttp.Request, l *logger.Logger) (w *suckhttp.Response, err error) {
 
+	w = &suckhttp.Response{}
+
 	formValues, err := url.ParseQuery(string(r.Body))
 	if err != nil {
-		return nil, err
+		w.SetStatusCode(400, "Bad Request")
+		return
 	}
 
 	login := formValues.Get("login")

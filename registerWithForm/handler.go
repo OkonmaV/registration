@@ -61,9 +61,12 @@ func (c *RegisterWithForm) Close() error {
 
 func (conf *RegisterWithForm) Handle(r *suckhttp.Request, l *logger.Logger) (w *suckhttp.Response, err error) {
 
+	w = &suckhttp.Response{}
+
 	formValues, err := url.ParseQuery(string(r.Body))
 	if err != nil {
-		return nil, err
+		w.SetStatusCode(400, "Bad Request")
+		return
 	}
 
 	userRegCodeStr := formValues.Get("code")

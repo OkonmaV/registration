@@ -43,6 +43,7 @@ func (conf *CodesGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (w *su
 	// TODO: AUTH
 
 	w = &suckhttp.Response{}
+
 	err = nil
 	queryValues, err := url.ParseQuery(r.Uri.RawQuery)
 	if err != nil {
