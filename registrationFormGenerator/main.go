@@ -5,8 +5,6 @@ import (
 	"lib"
 
 	"thin-peak/httpservice"
-
-	"github.com/tarantool/go-tarantool"
 )
 
 type config struct {
@@ -14,7 +12,6 @@ type config struct {
 	Listen       string
 	TrntlAddr    string
 	TrntlTable   string
-	TrntlConn    *tarantool.Connection
 }
 
 func (c *config) GetListenAddress() string {
@@ -24,12 +21,7 @@ func (c *config) GetConfiguratorAddress() string {
 	return c.Configurator
 }
 func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.ServiceName]*httpservice.InnerService) (httpservice.HttpService, error) {
-	c.TrntlConn = new(tarantool.Connection)
-	return NewRegistrationFormGenerator(c.TrntlAddr, c.TrntlTable, c.TrntlConn)
-}
-
-func (c *config) Close() error {
-	return c.TrntlConn.Close()
+	return NewRegistrationFormGenerator(c.TrntlAddr, c.TrntlTable)
 }
 
 func main() {

@@ -32,7 +32,7 @@ const form = `<form action="http://127.0.0.1:8094" method="POST">
 </form>
 ` // TODO: адрес прописать
 
-func NewRegistrationFormGenerator(trntlAddr string, trntlTable string, trntlConn *tarantool.Connection) (*RegistrationFormGenerator, error) {
+func NewRegistrationFormGenerator(trntlAddr string, trntlTable string) (*RegistrationFormGenerator, error) {
 
 	trntlConn, err := tarantool.Connect(trntlAddr, tarantool.Opts{
 		// User: ,
@@ -49,7 +49,7 @@ func NewRegistrationFormGenerator(trntlAddr string, trntlTable string, trntlConn
 
 func (conf *RegistrationFormGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (w *suckhttp.Response, err error) {
 
-	w = &suckhttp.Response{}
+	//w = &suckhttp.Response{}
 
 	queryValues, err := url.ParseQuery(r.Uri.RawQuery)
 	if err != nil {

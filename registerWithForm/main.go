@@ -5,9 +5,6 @@ import (
 	"lib"
 
 	"thin-peak/httpservice"
-
-	"github.com/big-larry/mgo"
-	"github.com/tarantool/go-tarantool"
 )
 
 type config struct {
@@ -15,10 +12,8 @@ type config struct {
 	Listen       string
 	TrntlAddr    string
 	TrntlTable   string
-	TrntlConn    *tarantool.Connection
 	MgoAddr      string
 	MgoColl      string
-	MgoConn      *mgo.Session
 }
 
 func (c *config) GetListenAddress() string {
@@ -28,12 +23,7 @@ func (c *config) GetConfiguratorAddress() string {
 	return c.Configurator
 }
 func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.ServiceName]*httpservice.InnerService) (httpservice.HttpService, error) {
-	return NewRegisterWithForm(c.TrntlAddr, c.TrntlTable, c.TrntlConn, c.MgoAddr, c.MgoColl, c.MgoConn)
-}
-
-func (c *config) Close() error {
-	c.MgoConn.Close()
-	return c.TrntlConn.Close()
+	return NewRegisterWithForm(c.TrntlAddr, c.TrntlTable, c.MgoAddr, c.MgoColl)
 }
 
 func main() {

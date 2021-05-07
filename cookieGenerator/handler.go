@@ -13,7 +13,6 @@ import (
 
 type claims struct {
 	Login string
-	//Salt  string
 	jwt.StandardClaims
 }
 
@@ -31,7 +30,7 @@ func (conf *CookieGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (w *s
 
 	if r.GetHeader("Content-Type") != "application/x-www-form-urlencoded" && r.GetMethod() != suckhttp.POST {
 		w.SetStatusCode(400, "Bad Request")
-		err = errors.New("Wrong request's method or content-type")
+		err = errors.New("wrong request's method or content-type")
 		//l.Warning("Request's params", "Wrong method or content-type")
 		return
 	}
@@ -42,19 +41,34 @@ func (conf *CookieGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (w *s
 	if err != nil {
 		return nil, err
 	}
-	userLoginHash := formValues.Get("login")
-	if len(userLoginHash) != 32 {
+	userLoginHash := formValues.Get("loginHash")
+	userLogin := formValues.Get("login")
+	if len(userLoginHash) != 32 || userLogin == "" {
 		w.SetStatusCode(400, "Bad Request")
+		return w, nil
 	}
 
-	jwtToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, &claims{Login: userLoginHash}).SignedString(jwtKey)
-	if err != nil {
-		return nil, err
+	var jwtToken string
+
+	if userLogin != "" || userLoginHash == "" {
+
+		jwtToken, err = jwt.NewWithClaims(jwt.SigningMethodHS256, &claims{Login: userLogin}).SignedString(jwtKey)
+		if err != nil {
+			return nil, err
+		}
+	} else if userLogin == "" || userLoginHash != "" {
+
+		jwtToken, err = jwt.NewWithClaims(jwt.SigningMethodHS256, &claims{Login: userLoginHash}).SignedString(jwtKey)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		return nil, errors.New("all params aren't null") // ? ="вы там с ума сходите?"
 	}
 
 	expires := time.Now().Add(20 * time.Hour).String()
 
-	w.SetHeader("Set-Cookie", suckutils.ConcatFour("koki=", jwtToken, ";Expires=", expires))
+	w.SetHeader(suckhttp.Set_Cookie, suckutils.ConcatFour("koki=", jwtToken, ";Expires=", expires))
 	w.SetStatusCode(200, "OK")
 
 	return w, nil

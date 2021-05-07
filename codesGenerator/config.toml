@@ -1,4 +1,4 @@
-Configurator = "tcp:127.0.0.1:8090"
-Listen = "tcp:127.0.0.1:8081"
+Configurator = "tcp:127.0.0.1:8100"
+Listen = "tcp:127.0.0.1:8091"
 TrntlAddr = "tcp:127.0.0.1:3301"
 TrntlTable = "regcodes"

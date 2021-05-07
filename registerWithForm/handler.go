@@ -33,7 +33,7 @@ type RegisterWithForm struct {
 	trntlTableCodes string
 }
 
-func NewRegisterWithForm(trntlAddr string, trntlTable string, trntlConn *tarantool.Connection, mgoAddr string, mgoColl string, mgoConn *mgo.Session) (*RegisterWithForm, error) {
+func NewRegisterWithForm(trntlAddr string, trntlTable string, mgoAddr string, mgoColl string) (*RegisterWithForm, error) {
 
 	trntlConnection, err := tarantool.Connect(trntlAddr, tarantool.Opts{
 		// User: ,
@@ -52,6 +52,11 @@ func NewRegisterWithForm(trntlAddr string, trntlTable string, trntlConn *taranto
 	}
 
 	return &RegisterWithForm{mgoSession: mgoSession, mgoColl: mgoSession.DB("main").C(mgoColl), trntlConn: trntlConnection, trntlTable: trntlTable}, nil
+}
+
+func (c *RegisterWithForm) Close() error {
+	c.mgoSession.Close()
+	return c.trntlConn.Close()
 }
 
 func (conf *RegisterWithForm) Handle(r *suckhttp.Request, l *logger.Logger) (w *suckhttp.Response, err error) {

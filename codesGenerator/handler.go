@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"math/rand"
 	"net/url"
 	"strconv"
@@ -20,7 +19,6 @@ type CodesGenerator struct {
 }
 
 func NewCodesGenerator(trntlAddr string, trntlTable string) (*CodesGenerator, error) {
-	fmt.Println("conn")
 	trntlConnection, err := tarantool.Connect(trntlAddr, tarantool.Opts{
 		// User: ,
 		// Pass: ,
@@ -29,21 +27,21 @@ func NewCodesGenerator(trntlAddr string, trntlTable string) (*CodesGenerator, er
 		MaxReconnects: 4,
 	})
 	if err != nil {
+		logger.Error("Tarantool Conn", err)
 		return nil, err
 	}
-	fmt.Println("connected")
+	logger.Info("Tarantool Conn", "Connected!")
 	return &CodesGenerator{trntlConn: trntlConnection, trntlTable: trntlTable}, nil
 }
 
 func (handler *CodesGenerator) Close() error {
-	fmt.Println("------------ATTENTION---------------")
 	return handler.trntlConn.Close()
 }
 
 func (conf *CodesGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (w *suckhttp.Response, err error) {
 
 	// TODO: AUTH
-	fmt.Println("STAAAAAAAAAART")
+
 	w = &suckhttp.Response{}
 	err = nil
 	queryValues, err := url.ParseQuery(r.Uri.RawQuery)
@@ -68,7 +66,7 @@ func (conf *CodesGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (w *su
 
 	// закатываем
 	var errStep int
-	var expires time.Time = time.Now().Add(time.Hour * 72)
+	var expires int64 = time.Now().Add(time.Hour * 72).Unix()
 	var errDuplicateCodes = &tarantool.Error{Msg: suckutils.ConcatThree("Duplicate key exists in unique index 'primary' in space '", conf.trntlTable, "'"), Code: tarantool.ErrTupleFound}
 
 	for i, c := range codes {
