@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"math/rand"
 	"net/url"
 	"strconv"
@@ -9,7 +8,6 @@ import (
 	"time"
 
 	"github.com/big-larry/suckhttp"
-	"github.com/big-larry/suckutils"
 	"github.com/tarantool/go-tarantool"
 )
 
@@ -57,28 +55,24 @@ func (conf *CodesGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 	}
 	// генерим коды
 	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
-	codes := make([]int32, 0, countInt)
-	for i := 0; i < countInt; i++ {
-		codes[i] = rnd.Int31n(90000) + 10000
-	}
+	codes := make([]int32, countInt)
 
 	// закатываем
 	var expires int64 = time.Now().Add(time.Hour * 72).Unix()
-	var errDuplicateCodes = &tarantool.Error{Msg: suckutils.ConcatThree("Duplicate key exists in unique index 'primary' in space '", conf.trntlTable, "'"), Code: tarantool.ErrTupleFound}
 
 	for countInt > 0 {
 		r := rnd.Int31n(90000) + 10000
 		_, err = conf.trntlConn.Insert(conf.trntlTable, []interface{}{r, expires})
 		if err != nil {
-			if errors.Is(err, *errDuplicateCodes) {
+			if tarErr, ok := err.(*tarantool.Error); ok && tarErr.Code == tarantool.ErrTupleFound {
 				continue
 			} else {
 				l.Error("Tarantool insert", err)
 				break
 			}
 		}
-		codes = append(codes, r)
 		countInt--
+		codes[countInt] = r
 	}
 
 	// откатываем
