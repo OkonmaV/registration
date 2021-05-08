@@ -34,6 +34,7 @@ func NewAuthentication(trntlAddr string, trntlTable string, conns map[httpservic
 	if err != nil {
 		return nil, err
 	}
+
 	return &Authentication{trntlConn: trntlConn, trntlTable: trntlTable, connectors: conns}, nil
 }
 

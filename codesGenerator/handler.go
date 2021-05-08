@@ -38,75 +38,62 @@ func (handler *CodesGenerator) Close() error {
 	return handler.trntlConn.Close()
 }
 
-func (conf *CodesGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (w *suckhttp.Response, err error) {
+func (conf *CodesGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	// TODO: AUTH
 
-	w = &suckhttp.Response{}
-
-	err = nil
 	queryValues, err := url.ParseQuery(r.Uri.RawQuery)
 	if err != nil {
-		w.SetStatusCode(400, "Bad Request")
-		return
+		resp := suckhttp.NewResponse(400, "Bad Request")
+		return resp, err
 	}
 
 	countString := queryValues.Get("count")
 
 	countInt, err := strconv.Atoi(countString) // countString = "" вернет err
 	if err != nil {
-		w.SetStatusCode(400, "Bad Request")
-		return
+		resp := suckhttp.NewResponse(400, "Bad Request")
+		return resp, err
 	}
 	// генерим коды
 	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
-	codes := make([]int32, countInt)
+	codes := make([]int32, 0, countInt)
 	for i := 0; i < countInt; i++ {
 		codes[i] = rnd.Int31n(90000) + 10000
 	}
 
 	// закатываем
-	var errStep int
 	var expires int64 = time.Now().Add(time.Hour * 72).Unix()
 	var errDuplicateCodes = &tarantool.Error{Msg: suckutils.ConcatThree("Duplicate key exists in unique index 'primary' in space '", conf.trntlTable, "'"), Code: tarantool.ErrTupleFound}
 
-	for i, c := range codes {
-		_, err = conf.trntlConn.Insert(conf.trntlTable, []interface{}{c, expires})
+	for countInt > 0 {
+		r := rnd.Int31n(90000) + 10000
+		_, err = conf.trntlConn.Insert(conf.trntlTable, []interface{}{r, expires})
 		if err != nil {
 			if errors.Is(err, *errDuplicateCodes) {
-
-				cc := rnd.Int31n(90000) + 10000
-				_, err = conf.trntlConn.Insert(conf.trntlTable, []interface{}{cc, expires})
-
-				if err != nil {
-					errStep = i
-					break
-				}
-
+				continue
 			} else {
-				logger.Warning("tarantool.Insert", err.Error())
-				errStep = i
+				l.Error("Tarantool insert", err)
 				break
 			}
 		}
+		codes = append(codes, r)
+		countInt--
 	}
 
 	// откатываем
 	if err != nil {
-		w = nil
-		if errStep > 0 {
-			for i := 0; i < errStep; i++ {
-				_, errr := conf.trntlConn.Delete(conf.trntlTable, "primary", []interface{}{codes[i]})
-				if errr != nil {
-					return nil, errr
-				}
+		for _, c := range codes {
+			_, errr := conf.trntlConn.Delete(conf.trntlTable, "primary", []interface{}{c})
+			if err != nil {
+				return nil, errr
 			}
 		}
-		return
+		return nil, err
 	}
 
 	// TODO: ВОТ ТУТ ГЕНЕРИМ ДОКУМЕНТ И ОТДАЕМ
 	// Генерируй и отдавай в зависимости от запрошенного в заголовке Accept
-	w.SetStatusCode(200, "OK")
-	return
+	resp := suckhttp.NewResponse(200, "OK")
+	return resp, nil
 }
