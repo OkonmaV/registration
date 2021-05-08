@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"lib"
 	"net/url"
 	"thin-peak/httpservice"
@@ -13,16 +12,16 @@ import (
 )
 
 type Authentication struct {
-	trntlConn  *tarantool.Connection
-	trntlTable string
-	connectors map[httpservice.ServiceName]*httpservice.InnerService
+	trntlConn       *tarantool.Connection
+	trntlTable      string
+	cookieGenerator *httpservice.InnerService
 }
 
 func (handler *Authentication) Close() error {
 	return handler.trntlConn.Close()
 }
 
-func NewAuthentication(trntlAddr string, trntlTable string, conns map[httpservice.ServiceName]*httpservice.InnerService) (*Authentication, error) {
+func NewAuthentication(trntlAddr string, trntlTable string, cookieGenerator *httpservice.InnerService) (*Authentication, error) {
 
 	trntlConn, err := tarantool.Connect(trntlAddr, tarantool.Opts{
 		// User: ,
@@ -35,7 +34,7 @@ func NewAuthentication(trntlAddr string, trntlTable string, conns map[httpservic
 		return nil, err
 	}
 
-	return &Authentication{trntlConn: trntlConn, trntlTable: trntlTable, connectors: conns}, nil
+	return &Authentication{trntlConn: trntlConn, trntlTable: trntlTable, cookieGenerator: cookieGenerator}, nil
 }
 
 func (conf *Authentication) Handle(r *suckhttp.Request, l *logger.Logger) (w *suckhttp.Response, err error) {
@@ -66,20 +65,14 @@ func (conf *Authentication) Handle(r *suckhttp.Request, l *logger.Logger) (w *su
 		return nil, err
 	}
 	var trntlRes []interface{}
-	err = conf.trntlConn.SelectTyped(conf.trntlTable, "secondary", 0, 1, tarantool.IterEq, []interface{}{hashLogin, hashPassword}, &trntlRes)
-	if err != nil {
+	if err = conf.trntlConn.SelectTyped(conf.trntlTable, "secondary", 0, 1, tarantool.IterEq, []interface{}{hashLogin, hashPassword}, &trntlRes); err != nil {
 		return nil, err
 	}
 	if len(trntlRes) == 0 {
 		w.SetStatusCode(403, "Forbidden")
 		return
 	}
-	cookieServ := conf.connectors[lib.ServiceNameCookieGen]
-	if cookieServ == nil {
-		logger.Error("Inner Service Conn", errors.New("nil pointer instead if cookieGen connection"))
-		return nil, errors.New("nil pointer instead if cookieGen (as inner service) connection ")
-	}
-	cookieResp, err := cookieServ.Send(r)
+	cookieResp, err := conf.cookieGenerator.Send(r)
 	if err != nil {
 		return nil, err
 	}
