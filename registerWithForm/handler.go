@@ -1,10 +1,14 @@
 package main
 
 import (
-	"errors"
-	"lib"
+	"crypto/md5"
+	"encoding/hex"
+	"net"
 	"net/url"
+	"regexp"
 	"strconv"
+	"strings"
+	"thin-peak/httpservice"
 	"thin-peak/logs/logger"
 	"time"
 
@@ -26,14 +30,23 @@ type User struct {
 }
 
 type RegisterWithForm struct {
-	mgoSession      *mgo.Session
-	mgoColl         *mgo.Collection
-	trntlConn       *tarantool.Connection
-	trntlTable      string
-	trntlTableCodes string
+	mgoSession           *mgo.Session
+	mgoColl              *mgo.Collection
+	trntlConn            *tarantool.Connection
+	trntlTable           string
+	trntlCodesTable      string
+	cookieTokenGenerator *httpservice.InnerService
 }
 
-func NewRegisterWithForm(trntlAddr string, trntlTable string, mgoAddr string, mgoColl string) (*RegisterWithForm, error) {
+var emailRegex = regexp.MustCompile("^[a-zA-Z0-9.!#$%&'*+\\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
+
+// структура таблицы с кодами для регистрации
+type codesTuple struct {
+	code    int32
+	expires int64
+}
+
+func NewRegisterWithForm(trntlAddr string, trntlTable string, trntlCodesTable string, mgoAddr string, mgoColl string, cookieTokenGenerator *httpservice.InnerService) (*RegisterWithForm, error) {
 
 	trntlConnection, err := tarantool.Connect(trntlAddr, tarantool.Opts{
 		// User: ,
@@ -51,7 +64,7 @@ func NewRegisterWithForm(trntlAddr string, trntlTable string, mgoAddr string, mg
 		return nil, err
 	}
 
-	return &RegisterWithForm{mgoSession: mgoSession, mgoColl: mgoSession.DB("main").C(mgoColl), trntlConn: trntlConnection, trntlTable: trntlTable}, nil
+	return &RegisterWithForm{mgoSession: mgoSession, mgoColl: mgoSession.DB("main").C(mgoColl), trntlConn: trntlConnection, trntlTable: trntlTable, cookieTokenGenerator: cookieTokenGenerator}, nil
 }
 
 func (c *RegisterWithForm) Close() error {
@@ -59,56 +72,46 @@ func (c *RegisterWithForm) Close() error {
 	return c.trntlConn.Close()
 }
 
-func (conf *RegisterWithForm) Handle(r *suckhttp.Request, l *logger.Logger) (w *suckhttp.Response, err error) {
-
-	w = &suckhttp.Response{}
+func (conf *RegisterWithForm) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	formValues, err := url.ParseQuery(string(r.Body))
 	if err != nil {
-		w.SetStatusCode(400, "Bad Request")
-		return
+		return suckhttp.NewResponse(400, "Bad Request"), err
 	}
-
+	// code check
 	userRegCodeStr := formValues.Get("code")
 	if userRegCodeStr == "" {
-		w.SetStatusCode(400, "Bad Request")
-		return w, nil
+		return suckhttp.NewResponse(400, "Bad Request"), err
 	}
 	foo, err := strconv.ParseInt(userRegCodeStr, 10, 32)
 	if err != nil {
-		w.SetStatusCode(400, "Bad Request")
-		return w, err
+		return suckhttp.NewResponse(400, "Bad Request"), err
 	}
 	userRegCodeInt := int32(foo)
 
 	var trntlRes []interface{}
-	err = conf.trntlConn.SelectTyped(conf.trntlTableCodes, "primary", 0, 1, tarantool.IterEq, []interface{}{userRegCodeInt}, &trntlRes)
+	err = conf.trntlConn.SelectTyped(conf.trntlCodesTable, "primary", 0, 1, tarantool.IterEq, []interface{}{userRegCodeInt}, &trntlRes)
 	if err != nil {
 		return nil, err
 	}
 
+	// TODO: (для проверки  expires) - я хз как интерфейс перегнать trntlRes в codesTuple, ибо если результат пихать в конкретную структуру,
+	// то в данном случае она всегда будет [0 0].
+	// И я хз как получить доступ к конкретному полю нынешнего интерфейса, если не десериализовывать
+
 	if len(trntlRes) == 0 {
-		w.SetStatusCode(400, "Bad Request")
-		return w, nil
+		return suckhttp.NewResponse(403, "Forbidden"), nil
 	}
 
-	userFPassword := formValues.Get("password1")
-	userSPassword := formValues.Get("password2") // чтоб наверняка??
-	if len(userFPassword) < 8 || len(userFPassword) > 40 {
-		w.SetStatusCode(418, "") // TODO
-		return w, errors.New("unsuitable length of password")
-	}
-	if userFPassword != userSPassword {
-		w.SetStatusCode(418, "") // TODO
-		return nil, errors.New("passwords dont match")
-	}
+	// user info get & check
+	userFPassword := formValues.Get("password")
+
 	userF := formValues.Get("f")
 	userI := formValues.Get("i")
 	userO := formValues.Get("o")
 
 	if len(userF) < 2 || len(userI) < 5 || len(userO) < 5 || len(userF) > 30 || len(userI) > 30 || len(userO) > 30 {
-		w.SetStatusCode(418, "") // TODO
-		return nil, errors.New("too short f/i/o")
+		return suckhttp.NewResponse(400, "Bad Request"), nil // TODO: bad request ли?
 	}
 
 	userPosition := formValues.Get("position") // TODO: users position
@@ -116,41 +119,80 @@ func (conf *RegisterWithForm) Handle(r *suckhttp.Request, l *logger.Logger) (w *
 	userFac := formValues.Get("fac")           // TODO: faculty
 
 	userMail := formValues.Get("mail")
-	if !lib.IsEmailValid(userMail) {
-		w.SetStatusCode(418, "") // TODO
-		return w, errors.New("email isnt valid")
+	if !isEmailValid(userMail) {
+		return suckhttp.NewResponse(400, "Bad Request"), nil // TODO: bad request ли?
 	}
-	userMailHash, err := lib.GetMD5(userMail)
+
+	userMailHash, err := getMD5(userMail)
 	if err != nil {
 		return nil, err
 	}
-	userPassHash, err := lib.GetMD5(userFPassword)
+	userPassHash, err := getMD5(userFPassword)
 	if err != nil {
 		return nil, err
 	}
 
+	// tarantool insert
 	_, err = conf.trntlConn.Insert(conf.trntlTable, []interface{}{userMailHash, userPassHash})
 	if err != nil {
-		if errors.Is(err, tarantool.Error{Msg: suckutils.ConcatThree("Duplicate key exists in unique index 'primary' in space '", conf.trntlTable, "'"), Code: tarantool.ErrTupleFound}) {
-			w.SetStatusCode(418, "") // TODO
-			return
+		if tarErr, ok := err.(*tarantool.Error); ok && tarErr.Code == tarantool.ErrTupleFound {
+			return suckhttp.NewResponse(400, "Bad Request"), nil // TODO: bad request ли?
 		}
 		return nil, err
 	}
+	// mongo insert
 	insertData := &User{Id: userMailHash, Mail: userMail, Surname: userF, Name: userI, Otch: userO, Position: userPosition, Kaf: userKaf, Fac: userFac}
+
 	err = conf.mgoColl.Insert(insertData)
 	if err != nil {
 		_, errr := conf.trntlConn.Delete(conf.trntlTable, "primary", []interface{}{userMailHash})
 		if errr != nil {
+			l.Error("Mongo insert", err)
 			return nil, errr
 		}
 		return nil, err
 	}
 
-	// TODO: дать куку
-	// Так дай, есть же сервис!!!
+	// make user's cookie
+	cookieTokenReq := *r
+	cookieTokenReq.Body = []byte(userMailHash)
+	cookieTokenResp, err := conf.cookieTokenGenerator.Send(&cookieTokenReq)
+	if err != nil {
+		return nil, err
+	}
+	if i, _ := cookieTokenResp.GetStatus(); i != 200 {
+		return nil, nil
+	}
+
+	expires := time.Now().Add(20 * time.Hour).String()
+	resp := suckhttp.NewResponse(200, "OK")
+	resp.SetHeader(suckhttp.Set_Cookie, suckutils.ConcatFour("koki=", string(cookieTokenResp.GetBody()), ";Expires=", expires))
+
 	// TODO: письмо на мыло
 
-	w.SetStatusCode(200, "OK")
-	return
+	return resp, nil
+}
+
+func getMD5(str string) (string, error) {
+	hash := md5.New()
+	_, err := hash.Write([]byte(str))
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func isEmailValid(email string) bool {
+	if len(email) < 6 && len(email) > 40 {
+		return false
+	}
+	if !emailRegex.MatchString(email) {
+		return false
+	}
+	parts := strings.Split(email, "@")
+	mx, err := net.LookupMX(parts[1])
+	if err != nil || len(mx) == 0 {
+		return false
+	}
+	return true
 }

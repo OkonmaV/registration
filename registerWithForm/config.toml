@@ -1,6 +1,7 @@
 Configurator = "unix:/var/run/my/configurator.sock"
 Listen = "tcp:127.0.0.1:8093"
-TrntlAddr = "tcp:127.0.0.1:3301"
+TrntlAddr = "127.0.0.1:3301"
 TrntlTable = "users"
+TrntlCodesTable = "regcodes"
 MgoAddr = "127.0.0.1"
 MgoColl = "users"

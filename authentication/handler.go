@@ -8,20 +8,21 @@ import (
 	"time"
 
 	"github.com/big-larry/suckhttp"
+	"github.com/big-larry/suckutils"
 	"github.com/tarantool/go-tarantool"
 )
 
 type Authentication struct {
-	trntlConn       *tarantool.Connection
-	trntlTable      string
-	cookieGenerator *httpservice.InnerService
+	trntlConn            *tarantool.Connection
+	trntlTable           string
+	cookieTokenGenerator *httpservice.InnerService
 }
 
 func (handler *Authentication) Close() error {
 	return handler.trntlConn.Close()
 }
 
-func NewAuthentication(trntlAddr string, trntlTable string, cookieGenerator *httpservice.InnerService) (*Authentication, error) {
+func NewAuthentication(trntlAddr string, trntlTable string, cookieTokenGenerator *httpservice.InnerService) (*Authentication, error) {
 
 	trntlConn, err := tarantool.Connect(trntlAddr, tarantool.Opts{
 		// User: ,
@@ -34,34 +35,28 @@ func NewAuthentication(trntlAddr string, trntlTable string, cookieGenerator *htt
 		return nil, err
 	}
 
-	return &Authentication{trntlConn: trntlConn, trntlTable: trntlTable, cookieGenerator: cookieGenerator}, nil
+	return &Authentication{trntlConn: trntlConn, trntlTable: trntlTable, cookieTokenGenerator: cookieTokenGenerator}, nil
 }
 
-func (conf *Authentication) Handle(r *suckhttp.Request, l *logger.Logger) (w *suckhttp.Response, err error) {
-
-	w = &suckhttp.Response{}
+func (conf *Authentication) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	formValues, err := url.ParseQuery(string(r.Body))
 	if err != nil {
-		w.SetStatusCode(400, "Bad Request")
-		return
+		return suckhttp.NewResponse(400, "Bad request"), err
 	}
 
 	login := formValues.Get("login")
 	password := formValues.Get("password")
 	if login == "" || password == "" {
-		w.SetStatusCode(400, "Bad Request")
-		return
+		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
 	hashLogin, err := lib.GetMD5(login)
 	if err != nil {
-		logger.Error("Get MD5", err)
 		return nil, err
 	}
 	hashPassword, err := lib.GetMD5(password)
 	if err != nil {
-		logger.Error("Get MD5", err)
 		return nil, err
 	}
 	var trntlRes []interface{}
@@ -69,15 +64,30 @@ func (conf *Authentication) Handle(r *suckhttp.Request, l *logger.Logger) (w *su
 		return nil, err
 	}
 	if len(trntlRes) == 0 {
-		w.SetStatusCode(403, "Forbidden")
-		return
+		return suckhttp.NewResponse(403, "Forbidden"), nil
 	}
-	cookieResp, err := conf.cookieGenerator.Send(r)
+
+	cookieResp, err := conf.cookieTokenGenerator.Send(r)
 	if err != nil {
 		return nil, err
 	}
 	if i, _ := cookieResp.GetStatus(); i != 200 {
 		return nil, nil
 	}
-	return cookieResp, nil
+
+	cookieTokenReq := *r
+	cookieTokenReq.Body = []byte(hashLogin)
+	cookieTokenResp, err := conf.cookieTokenGenerator.Send(&cookieTokenReq)
+	if err != nil {
+		return nil, err
+	}
+	if i, _ := cookieTokenResp.GetStatus(); i != 200 {
+		return nil, nil
+	}
+
+	expires := time.Now().Add(20 * time.Hour).String()
+	resp := suckhttp.NewResponse(200, "OK")
+	resp.SetHeader(suckhttp.Set_Cookie, suckutils.ConcatFour("koki=", string(cookieTokenResp.GetBody()), ";Expires=", expires))
+
+	return resp, nil
 }
