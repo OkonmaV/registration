@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"lib"
-
 	"thin-peak/httpservice"
 )
 
@@ -19,9 +18,9 @@ func (c *config) GetConfiguratorAddress() string {
 	return c.Configurator
 }
 func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.ServiceName]*httpservice.InnerService) (httpservice.HttpService, error) {
-	return NewCookieTokenGenerator()
+	return NewSignOut()
 }
 
 func main() {
-	httpservice.InitNewService(lib.ServiceNameCookieTokenGen, false, 5, &config{})
+	httpservice.InitNewService(lib.ServiceNameSignOut, false, 5, &config{})
 }
