@@ -30,12 +30,12 @@ type User struct {
 }
 
 type RegisterWithForm struct {
-	mgoSession           *mgo.Session
-	mgoColl              *mgo.Collection
-	trntlConn            *tarantool.Connection
-	trntlTable           string
-	trntlCodesTable      string
-	cookieTokenGenerator *httpservice.InnerService
+	mgoSession      *mgo.Session
+	mgoColl         *mgo.Collection
+	trntlConn       *tarantool.Connection
+	trntlTable      string
+	trntlCodesTable string
+	tokenGenerator  *httpservice.InnerService
 }
 
 var emailRegex = regexp.MustCompile("^[a-zA-Z0-9.!#$%&'*+\\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
@@ -46,7 +46,7 @@ type codesTuple struct {
 	expires int64
 }
 
-func NewRegisterWithForm(trntlAddr string, trntlTable string, trntlCodesTable string, mgoAddr string, mgoColl string, cookieTokenGenerator *httpservice.InnerService) (*RegisterWithForm, error) {
+func NewRegisterWithForm(trntlAddr string, trntlTable string, trntlCodesTable string, mgoAddr string, mgoColl string, tokenGenerator *httpservice.InnerService) (*RegisterWithForm, error) {
 
 	trntlConnection, err := tarantool.Connect(trntlAddr, tarantool.Opts{
 		// User: ,
@@ -64,7 +64,7 @@ func NewRegisterWithForm(trntlAddr string, trntlTable string, trntlCodesTable st
 		return nil, err
 	}
 
-	return &RegisterWithForm{mgoSession: mgoSession, mgoColl: mgoSession.DB("main").C(mgoColl), trntlConn: trntlConnection, trntlTable: trntlTable, cookieTokenGenerator: cookieTokenGenerator}, nil
+	return &RegisterWithForm{mgoSession: mgoSession, mgoColl: mgoSession.DB("main").C(mgoColl), trntlConn: trntlConnection, trntlTable: trntlTable, tokenGenerator: tokenGenerator}, nil
 }
 
 func (c *RegisterWithForm) Close() error {
@@ -74,6 +74,9 @@ func (c *RegisterWithForm) Close() error {
 
 func (conf *RegisterWithForm) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
+	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") {
+		return suckhttp.NewResponse(400, "Bad request"), nil
+	}
 	formValues, err := url.ParseQuery(string(r.Body))
 	if err != nil {
 		return suckhttp.NewResponse(400, "Bad Request"), err
@@ -154,19 +157,21 @@ func (conf *RegisterWithForm) Handle(r *suckhttp.Request, l *logger.Logger) (*su
 	}
 
 	// make user's cookie
-	cookieTokenReq := *r
-	cookieTokenReq.Body = []byte(userMailHash)
-	cookieTokenResp, err := conf.cookieTokenGenerator.Send(&cookieTokenReq)
+	tokenReq, err := conf.tokenGenerator.CreateRequestFrom(suckhttp.GET, suckutils.ConcatTwo("/?hash=", userMailHash), r)
 	if err != nil {
 		return nil, err
 	}
-	if i, _ := cookieTokenResp.GetStatus(); i != 200 {
+	tokenResp, err := conf.tokenGenerator.Send(tokenReq)
+	if err != nil {
+		return nil, err
+	}
+	if i, _ := tokenResp.GetStatus(); i != 200 {
 		return nil, nil
 	}
 
 	expires := time.Now().Add(20 * time.Hour).String()
 	resp := suckhttp.NewResponse(200, "OK")
-	resp.SetHeader(suckhttp.Set_Cookie, suckutils.ConcatFour("koki=", string(cookieTokenResp.GetBody()), ";Expires=", expires))
+	resp.SetHeader(suckhttp.Set_Cookie, suckutils.ConcatFour("koki=", string(tokenResp.GetBody()), ";Expires=", expires))
 
 	// TODO: письмо на мыло
 

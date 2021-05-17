@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
-	"net/url"
 	"strconv"
 	"strings"
 	"thin-peak/logs/logger"
@@ -45,20 +44,14 @@ func (conf *CodesGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 
 	// TODO: AUTH
 
-	queryValues, err := url.ParseQuery(r.Uri.RawQuery)
-	if err != nil {
-		return suckhttp.NewResponse(400, "Bad Request"), err
-	}
-
-	countString := queryValues.Get("count")
-
+	countString := r.Uri.Query().Get("count")
 	countInt, err := strconv.Atoi(countString) // countString = "" вернет err
 	if err != nil {
 		return suckhttp.NewResponse(400, "Bad Request"), err
 	}
-	// генерим коды
+	//
 	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
-	codes := make([]int32, countInt)
+	codes := make([]int32, 0, countInt)
 
 	// закатываем
 	var expires int64 = time.Now().Add(time.Hour * 72).Unix()
@@ -75,9 +68,9 @@ func (conf *CodesGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 			}
 		}
 		countInt--
-		codes[countInt] = r
+		codes = append(codes, r)
 	}
-
+	// ПРОВЕРКА НА ОШИБКУ ТУДУ
 	// откатываем
 	if err != nil {
 		foo, errr := conf.undoInsert(codes)

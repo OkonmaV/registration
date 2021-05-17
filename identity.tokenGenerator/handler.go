@@ -13,24 +13,24 @@ type claims struct {
 }
 
 type CookieTokenGenerator struct {
+	jwtKey []byte
 }
 
-func NewCookieTokenGenerator() (*CookieTokenGenerator, error) {
-	return &CookieTokenGenerator{}, nil
+func NewCookieTokenGenerator(jwtKey string) (*CookieTokenGenerator, error) {
+	return &CookieTokenGenerator{jwtKey: []byte(jwtKey)}, nil
 }
-
-var jwtKey = []byte{79, 76, 69, 71}
 
 func (conf *CookieTokenGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	var jwtToken string
 
-	hashLogin := string(r.Body)
+	hashLogin := r.Uri.Query().Get("hash")
+
 	if len(hashLogin) != 32 {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	jwtToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, &claims{Login: hashLogin}).SignedString(jwtKey)
+	jwtToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, &claims{Login: hashLogin}).SignedString(conf.jwtKey)
 	if err != nil {
 		return nil, err
 	}

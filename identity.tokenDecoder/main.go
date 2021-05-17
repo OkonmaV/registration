@@ -3,13 +3,13 @@ package main
 import (
 	"context"
 	"lib"
-
 	"thin-peak/httpservice"
 )
 
 type config struct {
 	Configurator string
 	Listen       string
+	JwtKey       string
 }
 
 func (c *config) GetListenAddress() string {
@@ -19,7 +19,7 @@ func (c *config) GetConfiguratorAddress() string {
 	return c.Configurator
 }
 func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.ServiceName]*httpservice.InnerService) (httpservice.HttpService, error) {
-	return NewCookieTokenGenerator()
+	return NewTokenDecoder(c.JwtKey)
 }
 
 func main() {
