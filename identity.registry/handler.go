@@ -58,11 +58,13 @@ func NewRegisterWithForm(trntlAddr string, trntlTable string, trntlCodesTable st
 	if err != nil {
 		return nil, err
 	}
+	logger.Info("Tarantool", "Connected!")
 
 	mgoSession, err := mgo.Dial(mgoAddr)
 	if err != nil {
 		return nil, err
 	}
+	logger.Info("Mongo", "Connected!")
 
 	return &RegisterWithForm{mgoSession: mgoSession, mgoColl: mgoSession.DB("main").C(mgoColl), trntlConn: trntlConnection, trntlTable: trntlTable, tokenGenerator: tokenGenerator}, nil
 }

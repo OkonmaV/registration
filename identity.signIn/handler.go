@@ -35,7 +35,7 @@ func NewAuthentication(trntlAddr string, trntlTable string, tokenGenerator *http
 	if err != nil {
 		return nil, err
 	}
-
+	logger.Info("Tarantool", "Connected!")
 	return &Authentication{trntlConn: trntlConn, trntlTable: trntlTable, tokenGenerator: tokenGenerator}, nil
 }
 

@@ -12,6 +12,7 @@ import (
 
 	"github.com/big-larry/suckhttp"
 	"github.com/big-larry/suckutils"
+	"github.com/rs/xid"
 	"github.com/tarantool/go-tarantool"
 )
 
@@ -29,10 +30,10 @@ func NewCodesGenerator(trntlAddr string, trntlTable string) (*CodesGenerator, er
 		MaxReconnects: 4,
 	})
 	if err != nil {
-		logger.Error("Tarantool Conn", err)
+		logger.Error("Tarantool", err)
 		return nil, err
 	}
-	logger.Info("Tarantool Conn", "Connected!")
+	logger.Info("Tarantool", "Connected!")
 	return &CodesGenerator{trntlConn: trntlConnection, trntlTable: trntlTable}, nil
 }
 
@@ -40,16 +41,20 @@ func (handler *CodesGenerator) Close() error {
 	return handler.trntlConn.Close()
 }
 
+func getRandId() string {
+	return xid.New().String()
+}
+
 func (conf *CodesGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	// TODO: AUTH
 
 	countString := r.Uri.Query().Get("count")
-	countInt, err := strconv.Atoi(countString) // countString = "" вернет err
+	countInt, err := strconv.Atoi(countString)
 	if err != nil {
 		return suckhttp.NewResponse(400, "Bad Request"), err
 	}
-	//
+
 	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 	codes := make([]int32, 0, countInt)
 

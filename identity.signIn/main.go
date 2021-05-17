@@ -21,9 +21,9 @@ func (c *config) GetConfiguratorAddress() string {
 }
 func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.ServiceName]*httpservice.InnerService) (httpservice.HttpService, error) {
 
-	return NewAuthentication(c.TrntlAddr, c.TrntlTable, connectors[lib.ServiceNameCookieTokenGen])
+	return NewAuthentication(c.TrntlAddr, c.TrntlTable, connectors[lib.ServiceNameTokenGen])
 }
 
 func main() {
-	httpservice.InitNewService(lib.ServiceNameAuthentication, false, 5, &config{}, lib.ServiceNameCookieTokenGen)
+	httpservice.InitNewService(lib.ServiceNameAuthentication, false, 5, &config{}, lib.ServiceNameTokenGen)
 }

@@ -23,5 +23,5 @@ func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.S
 }
 
 func main() {
-	httpservice.InitNewService(lib.ServiceNameCookieTokenGen, false, 5, &config{})
+	httpservice.InitNewService(lib.ServiceNameTokenDecode, false, 5, &config{})
 }

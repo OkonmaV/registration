@@ -1,5 +1,5 @@
-Configurator = "unix:/var/run/my/configurator.sock"
-Listen = "tcp:127.0.0.1:8093"
+Configurator = "tcp:127.0.0.1:8090"
+Listen = "tcp:127.0.0.1:8092"
 TrntlAddr = "127.0.0.1:3301"
 TrntlTable = "users"
 TrntlCodesTable = "regcodes"
