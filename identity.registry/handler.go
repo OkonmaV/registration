@@ -25,8 +25,9 @@ type User struct {
 	Surname  string `bson:"surname"`
 	Otch     string `bson:"otch"`
 	Position string `bson:"position"`
-	Kaf      string `bson:"kaf"`
-	Fac      string `bson:"fac"`
+	MetaId   string `bson:"metaid"`
+	//Kaf      string `bson:"kaf"`
+	//Fac      string `bson:"fac"`
 }
 
 type RegisterWithForm struct {
@@ -42,8 +43,10 @@ var emailRegex = regexp.MustCompile("^[a-zA-Z0-9.!#$%&'*+\\/=?^_`{|}~-]+@[a-zA-Z
 
 // структура таблицы с кодами для регистрации
 type codesTuple struct {
-	code    int32
-	expires int64
+	Code        int
+	MetaId      string
+	MetaSurname string
+	MetaName    string
 }
 
 func NewRegisterWithForm(trntlAddr string, trntlTable string, trntlCodesTable string, mgoAddr string, mgoColl string, tokenGenerator *httpservice.InnerService) (*RegisterWithForm, error) {
@@ -83,31 +86,6 @@ func (conf *RegisterWithForm) Handle(r *suckhttp.Request, l *logger.Logger) (*su
 	if err != nil {
 		return suckhttp.NewResponse(400, "Bad Request"), err
 	}
-	// code check
-	userRegCodeStr := formValues.Get("code")
-	if userRegCodeStr == "" {
-		return suckhttp.NewResponse(400, "Bad Request"), err
-	}
-	foo, err := strconv.ParseInt(userRegCodeStr, 10, 32)
-	if err != nil {
-		return suckhttp.NewResponse(400, "Bad Request"), err
-	}
-	userRegCodeInt := int32(foo)
-
-	var trntlRes []interface{}
-	err = conf.trntlConn.SelectTyped(conf.trntlCodesTable, "primary", 0, 1, tarantool.IterEq, []interface{}{userRegCodeInt}, &trntlRes)
-	if err != nil {
-		return nil, err
-	}
-
-	// TODO: (для проверки  expires) - я хз как интерфейс перегнать trntlRes в codesTuple, ибо если результат пихать в конкретную структуру,
-	// то в данном случае она всегда будет [0 0].
-	// И я хз как получить доступ к конкретному полю нынешнего интерфейса, если не десериализовывать
-
-	if len(trntlRes) == 0 {
-		return suckhttp.NewResponse(403, "Forbidden"), nil
-	}
-
 	// user info get & check
 	userFPassword := formValues.Get("password")
 
@@ -120,14 +98,36 @@ func (conf *RegisterWithForm) Handle(r *suckhttp.Request, l *logger.Logger) (*su
 	}
 
 	userPosition := formValues.Get("position") // TODO: users position
-	userKaf := formValues.Get("kaf")           // TODO: kafedra
-	userFac := formValues.Get("fac")           // TODO: faculty
+	// userKaf := formValues.Get("kaf")           // TODO: kafedra
+	// userFac := formValues.Get("fac")           // TODO: faculty
 
 	userMail := formValues.Get("mail")
 	if !isEmailValid(userMail) {
 		return suckhttp.NewResponse(400, "Bad Request"), nil // TODO: bad request ли?
 	}
+	// code check
+	userRegCodeStr := formValues.Get("code")
+	userRegCodeInt, err := strconv.Atoi(userRegCodeStr) //ParseInt(userRegCodeStr, 10, 16)
+	if err != nil || len(userRegCodeStr) != 5 {
+		return suckhttp.NewResponse(400, "Bad Request"), err
+	}
 
+	var trntlRes []codesTuple
+	err = conf.trntlConn.SelectTyped(conf.trntlCodesTable, "primary", 0, 1, tarantool.IterEq, []interface{}{userRegCodeInt}, &trntlRes)
+	if err != nil {
+		return nil, err
+	}
+	if len(trntlRes) == 0 {
+		return suckhttp.NewResponse(403, "Forbidden"), nil
+	}
+
+	// ???
+	if trntlRes[0].MetaSurname != userF || trntlRes[0].MetaName != userI {
+		l.Warning("UserInfo mismatch", suckutils.Concat("In trntl: ", trntlRes[0].MetaSurname, " ", trntlRes[0].MetaName, ", user typed: ", userF, " ", userI))
+	}
+	// ???
+
+	// prepare md5
 	userMailHash, err := getMD5(userMail)
 	if err != nil {
 		return nil, err
@@ -146,7 +146,7 @@ func (conf *RegisterWithForm) Handle(r *suckhttp.Request, l *logger.Logger) (*su
 		return nil, err
 	}
 	// mongo insert
-	insertData := &User{Id: userMailHash, Mail: userMail, Surname: userF, Name: userI, Otch: userO, Position: userPosition, Kaf: userKaf, Fac: userFac}
+	insertData := &User{Id: userMailHash, Mail: userMail, Surname: userF, Name: userI, Otch: userO, Position: userPosition, MetaId: trntlRes[0].MetaId}
 
 	err = conf.mgoColl.Insert(insertData)
 	if err != nil {
