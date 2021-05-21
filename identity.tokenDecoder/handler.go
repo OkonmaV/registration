@@ -9,11 +9,6 @@ import (
 	"github.com/dgrijalva/jwt-go"
 )
 
-type claims struct {
-	Login string
-	jwt.StandardClaims
-}
-
 type TokenDecoder struct {
 	jwtKey []byte
 }
@@ -24,12 +19,13 @@ func NewTokenDecoder(jwtKey string) (*TokenDecoder, error) {
 
 func (conf *TokenDecoder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
+	// AUTH
+
 	if !strings.Contains(r.GetHeader(suckhttp.Accept), "application/json") {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
 	tokenString := r.Uri.Query().Get("token")
-
 	if tokenString == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}

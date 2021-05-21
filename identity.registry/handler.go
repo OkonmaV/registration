@@ -61,6 +61,10 @@ func NewRegisterWithForm(trntlAddr string, trntlTable string, trntlCodesTable st
 	if err != nil {
 		return nil, err
 	}
+	_, err = trntlConnection.Ping()
+	if err != nil {
+		return nil, err
+	}
 	logger.Info("Tarantool", "Connected!")
 
 	mgoSession, err := mgo.Dial(mgoAddr)
@@ -69,7 +73,8 @@ func NewRegisterWithForm(trntlAddr string, trntlTable string, trntlCodesTable st
 	}
 	logger.Info("Mongo", "Connected!")
 
-	return &RegisterWithForm{mgoSession: mgoSession, mgoColl: mgoSession.DB("main").C(mgoColl), trntlConn: trntlConnection, trntlTable: trntlTable, tokenGenerator: tokenGenerator}, nil
+	return &RegisterWithForm{mgoSession: mgoSession, mgoColl: mgoSession.DB("main").C(mgoColl), trntlConn: trntlConnection, trntlTable: trntlTable, trntlCodesTable: trntlCodesTable,
+		tokenGenerator: tokenGenerator}, nil
 }
 
 func (c *RegisterWithForm) Close() error {
@@ -88,6 +93,9 @@ func (conf *RegisterWithForm) Handle(r *suckhttp.Request, l *logger.Logger) (*su
 	}
 	// user info get & check
 	userFPassword := formValues.Get("password")
+	if len(userFPassword) < 8 || len(userFPassword) > 45 {
+		return suckhttp.NewResponse(400, "Bad Request"), nil
+	}
 
 	userF := formValues.Get("f")
 	userI := formValues.Get("i")
@@ -121,7 +129,7 @@ func (conf *RegisterWithForm) Handle(r *suckhttp.Request, l *logger.Logger) (*su
 		return suckhttp.NewResponse(403, "Forbidden"), nil
 	}
 
-	// ???
+	// ??? check mismatch users surname'n'name
 	if trntlRes[0].MetaSurname != userF || trntlRes[0].MetaName != userI {
 		l.Warning("UserInfo mismatch", suckutils.Concat("In trntl: ", trntlRes[0].MetaSurname, " ", trntlRes[0].MetaName, ", user typed: ", userF, " ", userI))
 	}
@@ -140,7 +148,7 @@ func (conf *RegisterWithForm) Handle(r *suckhttp.Request, l *logger.Logger) (*su
 	// tarantool insert
 	_, err = conf.trntlConn.Insert(conf.trntlTable, []interface{}{userMailHash, userPassHash})
 	if err != nil {
-		if tarErr, ok := err.(*tarantool.Error); ok && tarErr.Code == tarantool.ErrTupleFound {
+		if tarErr, ok := err.(tarantool.Error); ok && tarErr.Code == tarantool.ErrTupleFound {
 			return suckhttp.NewResponse(400, "Bad Request"), nil // TODO: bad request ли?
 		}
 		return nil, err
@@ -157,22 +165,30 @@ func (conf *RegisterWithForm) Handle(r *suckhttp.Request, l *logger.Logger) (*su
 		}
 		return nil, err
 	}
+	// tarantool regcode record delete
+	_, err = conf.trntlConn.Delete(conf.trntlCodesTable, "primary", []interface{}{userRegCodeInt})
+	if err != nil {
+		l.Error("Trntl delete", err)
+		l.Warning("Delete code from trntl after registration", suckutils.ConcatFour("Code ", userRegCodeStr, " was not deleted, because of err: ", err.Error()))
+	}
+
+	resp := suckhttp.NewResponse(200, "OK")
 
 	// make user's cookie
 	tokenReq, err := conf.tokenGenerator.CreateRequestFrom(suckhttp.GET, suckutils.ConcatTwo("/?hash=", userMailHash), r)
 	if err != nil {
-		return nil, err
+		return resp, err
 	}
 	tokenResp, err := conf.tokenGenerator.Send(tokenReq)
 	if err != nil {
-		return nil, err
+		return resp, err
 	}
 	if i, _ := tokenResp.GetStatus(); i != 200 {
-		return nil, nil
+		return resp, nil
 	}
 
 	expires := time.Now().Add(20 * time.Hour).String()
-	resp := suckhttp.NewResponse(200, "OK")
+
 	resp.SetHeader(suckhttp.Set_Cookie, suckutils.ConcatFour("koki=", string(tokenResp.GetBody()), ";Expires=", expires))
 
 	// TODO: письмо на мыло

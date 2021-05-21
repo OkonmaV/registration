@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"lib"
 
 	"thin-peak/httpservice"
 )
@@ -12,6 +11,8 @@ type config struct {
 	Listen       string
 	JwtKey       string
 }
+
+var thisServiceName httpservice.ServiceName = "conf.tokengen"
 
 func (c *config) GetListenAddress() string {
 	return c.Listen
@@ -24,5 +25,5 @@ func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.S
 }
 
 func main() {
-	httpservice.InitNewService(lib.ServiceNameTokenGen, false, 5, &config{})
+	httpservice.InitNewService(thisServiceName, false, 5, &config{})
 }

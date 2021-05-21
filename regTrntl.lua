@@ -161,7 +161,9 @@ local function bootstrap()
 
     local space2 = box.schema.create_space('regcodes')
     space2:format({{name='code',type='integer'},
-    {name='exp',type='unsigned'}})
+    {name='metaid',type='string'},
+    {name='metasurname',type='string'},
+    {name='metaname',type='string'}})
     space2:create_index('primary',{parts={'code'}})
     -- Comment this if you need fine grained access control (without it, guest
     -- will have access to everything)

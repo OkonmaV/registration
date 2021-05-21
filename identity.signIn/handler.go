@@ -62,6 +62,7 @@ func (conf *Authentication) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 	if err != nil {
 		return nil, err
 	}
+
 	var trntlRes []interface{}
 	if err = conf.trntlConn.SelectTyped(conf.trntlTable, "secondary", 0, 1, tarantool.IterEq, []interface{}{hashLogin, hashPassword}, &trntlRes); err != nil {
 		return nil, err

@@ -14,7 +14,6 @@ import (
 	"github.com/big-larry/suckutils"
 	"github.com/rs/xid"
 	"github.com/tarantool/go-tarantool"
-	"go.mongodb.org/mongo-driver/bson"
 )
 
 type CreateMetauser struct {
@@ -27,6 +26,8 @@ type CreateMetauser struct {
 type metauser struct {
 	MetaId  string `json:"metaid"`
 	RegCode string `json:"regcode"`
+	Surname string `json:"surname"`
+	Name    string `json:"name"`
 }
 
 func NewCreateMetauser(trntlAddr string, trntlTable string, mgoAddr string, mgoColl string) (*CreateMetauser, error) {
@@ -67,17 +68,18 @@ func (conf *CreateMetauser) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 
 	// TODO: AUTH
 
-	var metaSurname, metaName, contextFolderId string
+	var metaSurname, metaName string
 	switch r.GetMethod() {
 	case suckhttp.GET:
 		metaSurname = r.Uri.Query().Get("surname")
 		metaName = r.Uri.Query().Get("name")
-		contextFolderId = r.Uri.Query().Get("contextid")
-		if metaName == "" || metaSurname == "" || contextFolderId == "" {
+		//contextFolderId = r.Uri.Query().Get("contextid")
+		if metaName == "" || metaSurname == "" { //|| contextFolderId == "" {
 			return suckhttp.NewResponse(400, "Bad Request"), nil
 		}
 	case suckhttp.POST:
 		if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") {
+			l.Debug("Content-type", "Wrong content-type at POST")
 			return suckhttp.NewResponse(400, "Bad request"), nil
 		}
 		formValues, err := url.ParseQuery(string(r.Body))
@@ -86,27 +88,27 @@ func (conf *CreateMetauser) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 		}
 		metaSurname = formValues.Get("surname")
 		metaName = formValues.Get("name")
-		contextFolderId = formValues.Get("context")
-		if metaName == "" || metaSurname == "" || contextFolderId == "" {
+		//contextFolderId = formValues.Get("contextid")
+		if metaName == "" || metaSurname == "" { //|| contextFolderId == "" {
 			return suckhttp.NewResponse(400, "Bad Request"), nil
 		}
 	}
-	//TODO
-	userMetaId := "randmetaid"
-	//
+	// //TODO: откуда мы берем метаид?
+	// userMetaId := "randmetaid"
+	// //
 
-	//TODO: maybe delete when auth done
-	query := &bson.M{"_id": contextFolderId, "deleted": bson.M{"$exists": false}, "metas.metatype": 1, "metas.metaid": userMetaId}
+	// //TODO: maybe delete when auth done
+	// query := &bson.M{"_id": contextFolderId, "deleted": bson.M{"$exists": false}, "metas.metatype": 1, "metas.metaid": userMetaId}
 
-	var foo interface{}
-	err := conf.mgoColl.Find(query).One(&foo)
-	if err != nil {
-		if err == mgo.ErrNotFound {
-			return suckhttp.NewResponse(403, "Forbidden"), nil
-		}
-		return nil, err
-	}
-	//
+	// var foo interface{}
+	// err := conf.mgoColl.Find(query).One(&foo)
+	// if err != nil {
+	// 	if err == mgo.ErrNotFound {
+	// 		return suckhttp.NewResponse(403, "Forbidden"), nil
+	// 	}
+	// 	return nil, err
+	// }
+	// //
 
 	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 	var code int
@@ -115,7 +117,7 @@ func (conf *CreateMetauser) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 		code = int(rnd.Int31n(90000) + 10000)
 		_, err := conf.trntlConn.Insert(conf.trntlTable, []interface{}{code, metaId, metaSurname, metaName})
 		if err != nil {
-			if tarErr, ok := err.(*tarantool.Error); ok && tarErr.Code == tarantool.ErrTupleFound {
+			if tarErr, ok := err.(tarantool.Error); ok && tarErr.Code == tarantool.ErrTupleFound {
 				continue
 			} else {
 				return nil, err
@@ -124,13 +126,14 @@ func (conf *CreateMetauser) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 		break
 	}
 
+	// TODO: нужно ли эту херь вообще возвращать?
 	resp := suckhttp.NewResponse(200, "OK")
 	if r.GetMethod() == suckhttp.GET {
 		var body []byte
 		contentType := "text/plain"
 		if strings.Contains(r.GetHeader(suckhttp.Accept), "application/json") {
 			var err error
-			body, err = json.Marshal(&metauser{MetaId: metaId, RegCode: strconv.Itoa(code)})
+			body, err = json.Marshal(&metauser{MetaId: metaId, RegCode: strconv.Itoa(code), Surname: metaSurname, Name: metaName})
 			if err != nil {
 				_, errr := conf.trntlConn.Delete(conf.trntlTable, "primary", []interface{}{code})
 				if errr != nil {
@@ -142,7 +145,7 @@ func (conf *CreateMetauser) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 			}
 			contentType = "application/json"
 		} else {
-			body = []byte(suckutils.ConcatThree(metaId, ";", strconv.Itoa(code)))
+			body = []byte(metaId)
 		}
 		resp.AddHeader(suckhttp.Content_Type, suckutils.ConcatTwo(contentType, "; charset=utf8"))
 		resp.SetBody(body)

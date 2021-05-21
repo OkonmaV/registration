@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"lib"
 	"thin-peak/httpservice"
 )
 
@@ -13,6 +12,9 @@ type config struct {
 	TrntlTable   string
 }
 
+var thisServiceName httpservice.ServiceName = "conf.signin"
+var tokenGenServiceName httpservice.ServiceName = "conf.tokengen"
+
 func (c *config) GetListenAddress() string {
 	return c.Listen
 }
@@ -21,9 +23,9 @@ func (c *config) GetConfiguratorAddress() string {
 }
 func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.ServiceName]*httpservice.InnerService) (httpservice.HttpService, error) {
 
-	return NewAuthentication(c.TrntlAddr, c.TrntlTable, connectors[lib.ServiceNameTokenGen])
+	return NewAuthentication(c.TrntlAddr, c.TrntlTable, connectors[tokenGenServiceName])
 }
 
 func main() {
-	httpservice.InitNewService(lib.ServiceNameAuthentication, false, 5, &config{}, lib.ServiceNameTokenGen)
+	httpservice.InitNewService(thisServiceName, false, 5, &config{}, tokenGenServiceName)
 }
