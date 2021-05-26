@@ -2,10 +2,10 @@ package main
 
 import (
 	"encoding/json"
-	"math/rand"
 	"net/url"
 	"strconv"
 	"strings"
+	"thin-peak/httpservice"
 	"thin-peak/logs/logger"
 	"time"
 
@@ -17,10 +17,11 @@ import (
 )
 
 type CreateMetauser struct {
-	trntlConn  *tarantool.Connection
-	trntlTable string
-	mgoSession *mgo.Session
-	mgoColl    *mgo.Collection
+	trntlConn      *tarantool.Connection
+	trntlTable     string
+	mgoSession     *mgo.Session
+	mgoColl        *mgo.Collection
+	codeGeneration *httpservice.InnerService
 }
 
 type metauser struct {
@@ -30,7 +31,7 @@ type metauser struct {
 	Name    string `json:"name"`
 }
 
-func NewCreateMetauser(trntlAddr string, trntlTable string, mgoAddr string, mgoColl string) (*CreateMetauser, error) {
+func NewCreateMetauser(trntlAddr string, trntlTable string, mgodb string, mgoAddr string, mgoColl string, codeGeneration *httpservice.InnerService) (*CreateMetauser, error) {
 	trntlConnection, err := tarantool.Connect(trntlAddr, tarantool.Opts{
 		// User: ,
 		// Pass: ,
@@ -50,9 +51,9 @@ func NewCreateMetauser(trntlAddr string, trntlTable string, mgoAddr string, mgoC
 		return nil, err
 	}
 	logger.Info("Mongo", "Connected!")
-	mgoCollection := mgoSession.DB("main").C(mgoColl)
+	mgoCollection := mgoSession.DB(mgodb).C(mgoColl)
 
-	return &CreateMetauser{trntlConn: trntlConnection, trntlTable: trntlTable, mgoSession: mgoSession, mgoColl: mgoCollection}, nil
+	return &CreateMetauser{trntlConn: trntlConnection, trntlTable: trntlTable, mgoSession: mgoSession, mgoColl: mgoCollection, codeGeneration: codeGeneration}, nil
 }
 
 func (handler *CreateMetauser) Close() error {
@@ -68,31 +69,21 @@ func (conf *CreateMetauser) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 
 	// TODO: AUTH
 
-	var metaSurname, metaName string
-	switch r.GetMethod() {
-	case suckhttp.GET:
-		metaSurname = r.Uri.Query().Get("surname")
-		metaName = r.Uri.Query().Get("name")
-		//contextFolderId = r.Uri.Query().Get("contextid")
-		if metaName == "" || metaSurname == "" { //|| contextFolderId == "" {
-			return suckhttp.NewResponse(400, "Bad Request"), nil
-		}
-	case suckhttp.POST:
-		if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") {
-			l.Debug("Content-type", "Wrong content-type at POST")
-			return suckhttp.NewResponse(400, "Bad request"), nil
-		}
-		formValues, err := url.ParseQuery(string(r.Body))
-		if err != nil {
-			return suckhttp.NewResponse(400, "Bad Request"), err
-		}
-		metaSurname = formValues.Get("surname")
-		metaName = formValues.Get("name")
-		//contextFolderId = formValues.Get("contextid")
-		if metaName == "" || metaSurname == "" { //|| contextFolderId == "" {
-			return suckhttp.NewResponse(400, "Bad Request"), nil
-		}
+	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") {
+		l.Debug("Content-type", "Wrong content-type at POST")
+		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
+	formValues, err := url.ParseQuery(string(r.Body))
+	if err != nil {
+		return suckhttp.NewResponse(400, "Bad Request"), err
+	}
+	metaSurname := formValues.Get("surname")
+	metaName := formValues.Get("name")
+	//contextFolderId = formValues.Get("contextid")
+	if metaName == "" || metaSurname == "" { //|| contextFolderId == "" {
+		return suckhttp.NewResponse(400, "Bad Request"), nil
+	}
+
 	// //TODO: откуда мы берем метаид?
 	// userMetaId := "randmetaid"
 	// //
@@ -100,30 +91,16 @@ func (conf *CreateMetauser) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 	// //TODO: maybe delete when auth done
 	// query := &bson.M{"_id": contextFolderId, "deleted": bson.M{"$exists": false}, "metas.metatype": 1, "metas.metaid": userMetaId}
 
-	// var foo interface{}
-	// err := conf.mgoColl.Find(query).One(&foo)
-	// if err != nil {
-	// 	if err == mgo.ErrNotFound {
-	// 		return suckhttp.NewResponse(403, "Forbidden"), nil
-	// 	}
-	// 	return nil, err
-	// }
-	// //
-
-	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
-	var code int
 	metaId := getRandId()
-	for {
-		code = int(rnd.Int31n(90000) + 10000)
-		_, err := conf.trntlConn.Insert(conf.trntlTable, []interface{}{code, metaId, metaSurname, metaName})
-		if err != nil {
-			if tarErr, ok := err.(tarantool.Error); ok && tarErr.Code == tarantool.ErrTupleFound {
-				continue
-			} else {
-				return nil, err
-			}
-		}
-		break
+
+	codeGenerationReq, err := conf.codeGeneration.CreateRequestFrom(suckhttp.POST, "", r)
+	if err != nil {
+		return nil, err
+	}
+	codeGenerationReq.Body = []byte(metaId)
+	codeGenerationResp, err := conf.codeGeneration.Send(codeGenerationReq)
+	if err != nil {
+		return nil, err
 	}
 
 	// TODO: нужно ли эту херь вообще возвращать?

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+
 	"thin-peak/httpservice"
 )
 
@@ -11,7 +12,7 @@ type config struct {
 	JwtKey       string
 }
 
-var thisServiceName httpservice.ServiceName = "conf.tokendecode"
+var thisServiceName httpservice.ServiceName = "conf.tokengenerator"
 
 func (c *config) GetListenAddress() string {
 	return c.Listen
@@ -20,7 +21,7 @@ func (c *config) GetConfiguratorAddress() string {
 	return c.Configurator
 }
 func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.ServiceName]*httpservice.InnerService) (httpservice.HttpService, error) {
-	return NewTokenDecoder(c.JwtKey)
+	return NewCookieTokenGenerator(c.JwtKey)
 }
 
 func main() {

@@ -11,11 +11,9 @@ type config struct {
 	Listen       string
 	TrntlAddr    string
 	TrntlTable   string
-	MgoAddr      string
-	MgoColl      string
 }
 
-var thisServiceName httpservice.ServiceName = "conf.createmetauser"
+var thisServiceName httpservice.ServiceName = "conf.createverifyemail"
 
 func (c *config) GetListenAddress() string {
 	return c.Listen
@@ -24,7 +22,7 @@ func (c *config) GetConfiguratorAddress() string {
 	return c.Configurator
 }
 func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.ServiceName]*httpservice.InnerService) (httpservice.HttpService, error) {
-	return NewCreateMetauser(c.TrntlAddr, c.TrntlTable, c.MgoAddr, c.MgoColl)
+	return NewCreateVerifyEmail(c.TrntlAddr, c.TrntlTable)
 }
 
 func main() {
