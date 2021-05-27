@@ -3,6 +3,7 @@ package main
 import (
 	"math/rand"
 	"strconv"
+	"strings"
 	"thin-peak/logs/logger"
 	"time"
 
@@ -37,6 +38,10 @@ func NewCodeGeneration(trntlAddr string, trntlTable string) (*CodeGeneration, er
 
 func (conf *CodeGeneration) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
+	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "text/plain") {
+		l.Debug("Content-type", "Wrong content-type at POST")
+		return suckhttp.NewResponse(400, "Bad request"), nil
+	}
 	metaId := string(r.Body)
 	if metaId == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
@@ -57,6 +62,10 @@ func (conf *CodeGeneration) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 		break
 	}
 	resp := suckhttp.NewResponse(200, "OK")
-	resp.SetBody([]byte(strconv.Itoa(code)))
+	var body []byte
+	if strings.Contains(r.GetHeader(suckhttp.Accept), "text/plain") {
+		body = []byte(strconv.Itoa(code))
+	}
+	resp.SetBody(body)
 	return resp, nil
 }

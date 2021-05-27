@@ -1,29 +1,25 @@
 package main
 
 import (
-	"lib"
-	"net/url"
+	"encoding/json"
 	"strings"
-	"thin-peak/httpservice"
 	"thin-peak/logs/logger"
 	"time"
 
 	"github.com/big-larry/suckhttp"
-	"github.com/big-larry/suckutils"
 	"github.com/tarantool/go-tarantool"
 )
 
-type Authentication struct {
-	trntlConn      *tarantool.Connection
-	trntlTable     string
-	tokenGenerator *httpservice.InnerService
+type EmailVerify struct {
+	trntlConn  *tarantool.Connection
+	trntlTable string
 }
 
-func (handler *Authentication) Close() error {
+func (handler *EmailVerify) Close() error {
 	return handler.trntlConn.Close()
 }
 
-func NewAuthentication(trntlAddr string, trntlTable string, tokenGenerator *httpservice.InnerService) (*Authentication, error) {
+func NewEmailVerify(trntlAddr string, trntlTable string) (*EmailVerify, error) {
 
 	trntlConn, err := tarantool.Connect(trntlAddr, tarantool.Opts{
 		// User: ,
@@ -36,56 +32,37 @@ func NewAuthentication(trntlAddr string, trntlTable string, tokenGenerator *http
 		return nil, err
 	}
 	logger.Info("Tarantool", "Connected!")
-	return &Authentication{trntlConn: trntlConn, trntlTable: trntlTable, tokenGenerator: tokenGenerator}, nil
+	return &EmailVerify{trntlConn: trntlConn, trntlTable: trntlTable}, nil
 }
 
-func (conf *Authentication) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
+func (conf *EmailVerify) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
-	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") {
+	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/json") {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
-	formValue, err := url.ParseQuery(string(r.Body))
-	if err != nil {
-		return nil, err
-	}
-	login := formValue.Get("login")
-	password := formValue.Get("password")
-	if login == "" || password == "" {
-		return suckhttp.NewResponse(400, "Bad request"), nil
+	if len(r.Body) == 0 {
+		return suckhttp.NewResponse(400, "Bad Request"), nil
 	}
 
-	hashLogin, err := lib.GetMD5(login)
+	var info map[string]string
+	err := json.Unmarshal(r.Body, &info)
 	if err != nil {
-		return nil, err
-	}
-	hashPassword, err := lib.GetMD5(password)
-	if err != nil {
-		return nil, err
+		return suckhttp.NewResponse(400, "Bad Request"), err
 	}
 
-	var trntlRes []interface{}
-	if err = conf.trntlConn.SelectTyped(conf.trntlTable, "secondary", 0, 1, tarantool.IterEq, []interface{}{hashLogin, hashPassword}, &trntlRes); err != nil {
-		return nil, err
-	}
-	if len(trntlRes) == 0 {
-		return suckhttp.NewResponse(403, "Forbidden"), nil
+	if info["code"] == "" || info["uuid"] == "" {
+		return suckhttp.NewResponse(400, "Bad Request"), nil
 	}
 
-	tokenReq, err := conf.tokenGenerator.CreateRequestFrom(suckhttp.GET, suckutils.ConcatTwo("/?hash=", hashLogin), r)
+	// tarantool update
+	_, err = conf.trntlConn.Update(conf.trntlTable, "secondary", []interface{}{info["code"], info["uuid"]}, []interface{}{[]interface{}{"=", "status", 2}})
 	if err != nil {
+		if tarErr, ok := err.(tarantool.Error); ok && tarErr.Code == tarantool.ErrTupleNotFound {
+			return suckhttp.NewResponse(403, "Forbidden"), nil
+		}
 		return nil, err
 	}
-	tokenResp, err := conf.tokenGenerator.Send(tokenReq)
-	if err != nil {
-		return nil, err
-	}
-	if i, _ := tokenResp.GetStatus(); i != 200 {
-		return nil, nil
-	}
+	//
 
-	expires := time.Now().Add(20 * time.Hour).String()
-	resp := suckhttp.NewResponse(200, "OK")
-	resp.SetHeader(suckhttp.Set_Cookie, suckutils.ConcatFour("koki=", string(tokenResp.GetBody()), ";Expires=", expires))
-
-	return resp, nil
+	return suckhttp.NewResponse(200, "OK"), nil
 }

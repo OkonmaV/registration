@@ -2,34 +2,27 @@ package main
 
 import (
 	"encoding/json"
-	"thin-peak/httpservice"
+	"strings"
 	"thin-peak/logs/logger"
 
 	"github.com/big-larry/mgo"
 	"github.com/big-larry/suckhttp"
-	"github.com/tarantool/go-tarantool"
 	"go.mongodb.org/mongo-driver/bson"
 )
 
 type user struct {
-	Id       string `bson:"_id"`
-	Mail     string `bson:"mail"`
-	Name     string `bson:"name"`
-	Surname  string `bson:"surname"`
-	Otch     string `bson:"otch"`
-	Position string `bson:"position"`
-	MetaId   string `bson:"metaid"`
-	//Kaf      string `bson:"kaf"`
-	//Fac      string `bson:"fac"`
+	Id       string `bson:"_id" json:"_id"`
+	Mail     string `bson:"mail" json:"mail,omitempty"`
+	Name     string `bson:"name" json:"name,omitempty"`
+	Surname  string `bson:"surname" json:"surname,omitempty"`
+	Otch     string `bson:"otch" json:"otch,omitempty"`
+	Position string `bson:"position" json:"position,omitempty"`
+	MetaId   string `bson:"metaid" json:"metaid,omitempty"`
 }
 
 type SetUserData struct {
-	mgoSession      *mgo.Session
-	mgoColl         *mgo.Collection
-	trntlConn       *tarantool.Connection
-	trntlTable      string
-	trntlCodesTable string
-	tokenGenerator  *httpservice.InnerService
+	mgoSession *mgo.Session
+	mgoColl    *mgo.Collection
 }
 
 func NewSetUserData(mgodb string, mgoAddr string, mgoColl string) (*SetUserData, error) {
@@ -50,44 +43,30 @@ func (c *SetUserData) Close() error {
 
 func (conf *SetUserData) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
+	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/json") {
+		l.Debug("Content-type", "Wrong content-type at POST")
+		return suckhttp.NewResponse(400, "Bad request"), nil
+	}
 	if len(r.Body) == 0 {
 		return suckhttp.NewResponse(400, "Bad Request"), nil
 	}
-	userDataMarshalled := r.Body
-	userData := &user{}
-	err := json.Unmarshal(userDataMarshalled, userData)
+	var upsertData map[string]interface{}
+	err := json.Unmarshal(r.Body, &upsertData)
+	if err != nil {
+		return suckhttp.NewResponse(400, "Bad request"), err
+	}
+	if upsertData["_id"] == nil {
+		l.Debug("Request json", "\"_id\" field is nil")
+		return suckhttp.NewResponse(400, "Bad request"), nil
+	}
+
+	update := bson.M{"$set": &upsertData, "$currentDate": bson.M{"lastmodified": true}}
+
+	_, err = conf.mgoColl.Upsert(&bson.M{"_id": upsertData["_id"], "deleted": bson.M{"$exists": false}}, update)
 	if err != nil {
 		return nil, err
 	}
 
-	change := mgo.Change{
-		Update:    bson.M{"$addToSet": bson.M{"metas": &meta{Type: 1, Id: fid}}},
-		Upsert:    false
-		ReturnNew: true,
-		Remove:    false,
-	}
-	var foo interface{}
+	return suckhttp.NewResponse(200, "OK"), nil
 
-	_, err = conf.mgoColl.Find(query).Apply(change, &foo)
-	if err != nil {
-		if err == mgo.ErrNotFound {
-			return suckhttp.NewResponse(400, "Bad request"), nil
-		}
-		return nil, err
-	}
-
-	// mongo insert
-	insertData := &User{Id: userMailHash, Mail: userMail, Surname: userF, Name: userI, Otch: userO, Position: userPosition, MetaId: trntlRes[0].MetaId}
-
-	err = conf.mgoColl.Insert(insertData)
-	if err != nil {
-		_, errr := conf.trntlConn.Delete(conf.trntlTable, "primary", []interface{}{userMailHash})
-		if errr != nil {
-			l.Error("Mongo insert", err)
-			return nil, errr
-		}
-		return nil, err
-	}
-
-	return
 }

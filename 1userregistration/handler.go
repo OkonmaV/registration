@@ -1,7 +1,8 @@
 package main
 
 import (
-	"net/url"
+	"encoding/json"
+	"strings"
 	"thin-peak/logs/logger"
 	"time"
 
@@ -41,22 +42,24 @@ func (c *UserRegistration) Close() error {
 
 func (conf *UserRegistration) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
-	// if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") {
-	// 	return suckhttp.NewResponse(400, "Bad request"), nil
-	// }
-	formValues, err := url.ParseQuery(string(r.Body))
+	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/json") {
+		return suckhttp.NewResponse(400, "Bad request"), nil
+	}
+	if len(r.Body) == 0 {
+		return suckhttp.NewResponse(400, "Bad Request"), nil
+	}
+
+	var info map[string]string
+	err := json.Unmarshal(r.Body, &info)
 	if err != nil {
 		return suckhttp.NewResponse(400, "Bad Request"), err
 	}
-	// user info get & check
-	hashLogin := formValues.Get("login")
-	hashPassword := formValues.Get("password")
-	if len(hashLogin) != 32 || hashPassword == "" {
-		return suckhttp.NewResponse(400, "Bad request"), nil
+
+	if info["hash"] == "" || info["password"] == "" {
+		return suckhttp.NewResponse(400, "Bad Request"), nil
 	}
 
-	// tarantool insert
-	_, err = conf.trntlConn.Insert(conf.trntlTable, []interface{}{hashLogin, hashPassword})
+	_, err = conf.trntlConn.Insert(conf.trntlTable, []interface{}{info["hash"], info["password"]})
 	if err != nil {
 		if tarErr, ok := err.(tarantool.Error); ok && tarErr.Code == tarantool.ErrTupleFound {
 			return suckhttp.NewResponse(400, "Bad Request"), nil // TODO: bad request ли?
